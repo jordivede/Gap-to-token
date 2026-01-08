@@ -102,10 +102,8 @@ async function getAvailableTokens() {
         if (v.modes && v.modes.length > 0) {
           const modeId = v.modes[0].modeId;
           try {
-            // Try getValueForMode first
             value = v.getValueForMode(modeId);
           } catch (e) {
-            // If getValueForMode fails, try valuesByMode
             try {
               if (v.valuesByMode && v.valuesByMode[modeId] !== undefined) {
                 value = v.valuesByMode[modeId];
@@ -193,7 +191,7 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
       }
     } else {
       // Find or create variable
-      const variables = await figma.variables.getLocalVariablesAsync();
+      const variables = figma.variables.getLocalVariables();
       variable = variables.find(v => v.name === tokenName);
 
       if (!variable) {

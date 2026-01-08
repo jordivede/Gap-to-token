@@ -413,7 +413,7 @@
         `;
       }
 
-      let options = '<option value="">— Crear nuevo token —</option>';
+      let options = '<option value="">— Seleccionar token —</option>';
       tokens.forEach(token => {
         let displayText = token.name;
         if (token.value !== null && token.value !== undefined) {
@@ -425,16 +425,18 @@
         }
         options += `<option value="${token.id}">${displayText}</option>`;
       });
+      // Add option to create new token
+      options += '<option value="__new__">+ Crear nuevo token</option>';
 
       return `
         <div class="token-selector-group">
-          <label class="token-selector-label">Token Existente</label>
+          <label class="token-selector-label">Vincular a Token</label>
           <select id="token-select-${gapType}" class="token-selector" data-gap-type="${gapType}">
             ${options}
           </select>
         </div>
         <div class="token-input-group" id="new-token-group-${gapType}" style="display: none;">
-          <label class="token-input-label">Nuevo Token</label>
+          <label class="token-input-label">Nombre del Nuevo Token</label>
           <input type="text" id="token-name-${gapType}" placeholder="spacing-md, gap-16..." />
         </div>
       `;
@@ -473,14 +475,9 @@
           <div class="gap-item-actions">
             ${isBound ? `
               <div class="bound-status">
-                Vinculado al token: <strong>${tokenName}</strong>
+                ✓ Vinculado al token: <strong>${tokenName}</strong>
               </div>
             ` : createTokenSelector(gapType, availableTokens)}
-            ${!isBound ? `
-              <button class="btn-link btn-link-${gapType}" data-gap-type="${gapType}" style="margin-top: 8px;">
-                Vincular Token
-              </button>
-            ` : ''}
           </div>
         </div>
       `;
@@ -529,25 +526,15 @@
       if (gapInfo.hasAutoLayout) {
         html += `
           <div class="section">
-            <div class="section-title">AutoLayout Gaps</div>
+            <div class="section-title">Item Spacing</div>
             <div class="gap-list">
               ${createGapItem('Item Spacing', gapInfo.itemSpacing, 'itemSpacing', gapInfo.itemSpacingToken)}
-              ${createGapItem('Counter Axis Spacing', gapInfo.counterAxisSpacing, 'counterAxisSpacing', gapInfo.counterAxisSpacingToken)}
             </div>
           </div>
         `;
       }
 
       html += `
-        <div class="section">
-          <div class="section-title">Padding</div>
-          <div class="gap-list">
-            ${createGapItem('Top', gapInfo.paddingTop, 'paddingTop', gapInfo.paddingTopToken)}
-            ${createGapItem('Right', gapInfo.paddingRight, 'paddingRight', gapInfo.paddingRightToken)}
-            ${createGapItem('Bottom', gapInfo.paddingBottom, 'paddingBottom', gapInfo.paddingBottomToken)}
-            ${createGapItem('Left', gapInfo.paddingLeft, 'paddingLeft', gapInfo.paddingLeftToken)}
-          </div>
-        </div>
         <div class="actions-footer">
           <button class="btn-secondary" id="scan-btn">Re-escanear</button>
         </div>
@@ -555,52 +542,58 @@
 
       content.innerHTML = html;
 
-      // Attach event listeners
+      // Attach event listeners for token selectors
       document.querySelectorAll('.token-selector').forEach(select => {
+        const gapType = select.id.replace('token-select-', '');
+        const newTokenGroup = document.getElementById('new-token-group-' + gapType);
+        
+        // Handle change event to show/hide new token input
         select.addEventListener('change', (e) => {
-          const gapType = e.target.id.replace('token-select-', '');
-          const newTokenGroup = document.getElementById('new-token-group-' + gapType);
+          const selectedValue = e.target.value;
+          
           if (newTokenGroup) {
-            newTokenGroup.style.display = e.target.value === '' ? 'block' : 'none';
+            newTokenGroup.style.display = selectedValue === '__new__' ? 'block' : 'none';
+          }
+          
+          // Auto-link when a token is selected (not empty option and not "create new")
+          if (selectedValue !== '' && selectedValue !== '__new__') {
+            const tokenId = selectedValue;
+            // Extract token name without the value part (e.g., "token-name — 16px" -> "token-name")
+            const optionText = e.target.options[e.target.selectedIndex].text;
+            const tokenName = optionText.split(' — ')[0].trim();
+            
+            parent.postMessage({
+              pluginMessage: {
+                type: 'link-token',
+                nodeId: currentGapInfo.nodeId,
+                tokenName: tokenName,
+                tokenId: tokenId,
+                gapType: gapType
+              }
+            }, '*');
           }
         });
       });
-
-      document.querySelectorAll('.btn-link').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const gapType = btn.getAttribute('data-gap-type');
-          const gapItem = btn.closest('.gap-item');
-          const tokenSelect = gapItem.querySelector('#token-select-' + gapType);
-          const tokenInput = gapItem.querySelector('#token-name-' + gapType);
-          
-          let tokenName = '';
-          let tokenId = null;
-
-          if (tokenSelect && tokenSelect.value !== '') {
-            tokenId = tokenSelect.value;
-            // Extract token name without the value part (e.g., "token-name — 16px" -> "token-name")
-            const optionText = tokenSelect.options[tokenSelect.selectedIndex].text;
-            tokenName = optionText.split(' — ')[0].trim();
-          } else if (tokenInput) {
-            tokenName = tokenInput.value.trim();
-            if (!tokenName) {
-              showMessage('Selecciona un token o ingresa un nombre', 'error');
-              return;
+      
+      // Handle new token creation (when input is used)
+      document.querySelectorAll('input[id^="token-name-"]').forEach(input => {
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            const gapType = input.id.replace('token-name-', '');
+            const tokenName = input.value.trim();
+            
+            if (tokenName) {
+              parent.postMessage({
+                pluginMessage: {
+                  type: 'link-token',
+                  nodeId: currentGapInfo.nodeId,
+                  tokenName: tokenName,
+                  tokenId: null,
+                  gapType: gapType
+                }
+              }, '*');
             }
-          } else {
-            showMessage('Selecciona un token o ingresa un nombre', 'error');
-            return;
           }
-
-          parent.postMessage({
-            pluginMessage: {
-              type: 'link-token',
-              nodeId: gapInfo.nodeId,
-              tokenName: tokenName,
-              tokenId: tokenId,
-              gapType: gapType
-            }
-          }, '*');
         });
       });
 
