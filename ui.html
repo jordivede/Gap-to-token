@@ -206,6 +206,58 @@
       margin-bottom: 4px;
       display: block;
     }
+
+    .token-badge {
+      display: inline-block;
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .gap-item-bound {
+      border-color: #4caf50;
+      background: #f1f8f4;
+    }
+
+    .gap-item-bound .gap-item-label {
+      color: #2e7d32;
+    }
+
+    select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      background: #ffffff;
+      cursor: pointer;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: #18a0fb;
+    }
+
+    .token-selector-group {
+      margin-bottom: 12px;
+    }
+
+    .token-selector-label {
+      font-size: 12px;
+      color: #666666;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .token-option-new {
+      font-style: italic;
+      color: #666666;
+    }
   </style>
 </head>
 <body>
@@ -224,14 +276,36 @@
 
   <script>
     let currentGapInfo = null;
+    let availableTokens = [];
 
-    // Token input group
-    const tokenInputGroup = `
-      <div class="token-input-group">
-        <label class="token-input-label">Nombre del Token</label>
-        <input type="text" id="token-name" placeholder="ej: spacing-md, gap-16" />
-      </div>
-    `;
+    function createTokenSelector(gapType, tokens) {
+      if (!tokens || tokens.length === 0) {
+        return `
+          <div class="token-input-group">
+            <label class="token-input-label">Nombre del Token</label>
+            <input type="text" id="token-name-${gapType}" placeholder="ej: spacing-md, gap-16" />
+          </div>
+        `;
+      }
+
+      let options = '<option value="">-- Crear nuevo token --</option>';
+      tokens.forEach(token => {
+        options += `<option value="${token.id}">${token.name}</option>`;
+      });
+
+      return `
+        <div class="token-selector-group">
+          <label class="token-selector-label">Seleccionar Token Existente</label>
+          <select id="token-select-${gapType}" class="token-selector" data-gap-type="${gapType}">
+            ${options}
+          </select>
+        </div>
+        <div class="token-input-group" id="new-token-group-${gapType}" style="display: none;">
+          <label class="token-input-label">Nombre del Nuevo Token</label>
+          <input type="text" id="token-name-${gapType}" placeholder="ej: spacing-md, gap-16" />
+        </div>
+      `;
+    }
 
     function showMessage(text, type) {
       const container = document.getElementById('message-container');
@@ -251,22 +325,32 @@
       return String(value);
     }
 
-    function createGapItem(label, value, gapType) {
+    function createGapItem(label, value, gapType, tokenName) {
       if (value === null || value === undefined) {
         return '';
       }
 
+      const isBound = tokenName !== null && tokenName !== undefined;
+      const boundClass = isBound ? 'gap-item-bound' : '';
+      const tokenBadge = isBound ? `<span class="token-badge">🔗 ${tokenName}</span>` : '';
+
       return `
-        <div class="gap-item">
+        <div class="gap-item ${boundClass}">
           <div class="gap-item-header">
-            <span class="gap-item-label">${label}</span>
+            <span class="gap-item-label">${label}${tokenBadge}</span>
             <span class="gap-item-value">${formatValue(value)}</span>
           </div>
           <div class="gap-item-actions">
-            ${tokenInputGroup}
-            <button class="btn-link btn-link-${gapType}" data-gap-type="${gapType}">
-              Vincular a Token
-            </button>
+            ${isBound ? `
+              <div style="padding: 8px; background: #e8f5e9; border-radius: 4px; font-size: 12px; color: #2e7d32;">
+                ✓ Vinculado al token: <strong>${tokenName}</strong>
+              </div>
+            ` : createTokenSelector(gapType, availableTokens)}
+            ${!isBound ? `
+              <button class="btn-link btn-link-${gapType}" data-gap-type="${gapType}">
+                Vincular a Token
+              </button>
+            ` : ''}
           </div>
         </div>
       `;
@@ -317,8 +401,8 @@
         html += `
           <div class="section">
             <div class="section-title">Gaps de AutoLayout</div>
-            ${createGapItem('Item Spacing', gapInfo.itemSpacing, 'itemSpacing')}
-            ${createGapItem('Counter Axis Spacing', gapInfo.counterAxisSpacing, 'counterAxisSpacing')}
+            ${createGapItem('Item Spacing', gapInfo.itemSpacing, 'itemSpacing', gapInfo.itemSpacingToken)}
+            ${createGapItem('Counter Axis Spacing', gapInfo.counterAxisSpacing, 'counterAxisSpacing', gapInfo.counterAxisSpacingToken)}
           </div>
         `;
       }
@@ -327,10 +411,10 @@
       html += `
         <div class="section">
           <div class="section-title">Padding</div>
-          ${createGapItem('Top', gapInfo.paddingTop, 'paddingTop')}
-          ${createGapItem('Right', gapInfo.paddingRight, 'paddingRight')}
-          ${createGapItem('Bottom', gapInfo.paddingBottom, 'paddingBottom')}
-          ${createGapItem('Left', gapInfo.paddingLeft, 'paddingLeft')}
+          ${createGapItem('Top', gapInfo.paddingTop, 'paddingTop', gapInfo.paddingTopToken)}
+          ${createGapItem('Right', gapInfo.paddingRight, 'paddingRight', gapInfo.paddingRightToken)}
+          ${createGapItem('Bottom', gapInfo.paddingBottom, 'paddingBottom', gapInfo.paddingBottomToken)}
+          ${createGapItem('Left', gapInfo.paddingLeft, 'paddingLeft', gapInfo.paddingLeftToken)}
         </div>
       `;
 
@@ -342,16 +426,50 @@
 
       content.innerHTML = html;
 
-      // Attach event listeners
+      // Attach event listeners for token selectors
+      document.querySelectorAll('.token-selector').forEach(select => {
+        select.addEventListener('change', (e) => {
+          const gapType = e.target.id.replace('token-select-', '');
+          const newTokenGroup = document.getElementById('new-token-group-' + gapType);
+          
+          if (e.target.value === '') {
+            // Show new token input
+            if (newTokenGroup) {
+              newTokenGroup.style.display = 'block';
+            }
+          } else {
+            // Hide new token input
+            if (newTokenGroup) {
+              newTokenGroup.style.display = 'none';
+            }
+          }
+        });
+      });
+
+      // Attach event listeners for link buttons
       document.querySelectorAll('.btn-link').forEach(btn => {
         btn.addEventListener('click', () => {
           const gapType = btn.getAttribute('data-gap-type');
           const gapItem = btn.closest('.gap-item');
-          const tokenInput = gapItem.querySelector('#token-name');
-          const tokenName = tokenInput.value.trim();
+          const tokenSelect = gapItem.querySelector('#token-select-' + gapType);
+          const tokenInput = gapItem.querySelector('#token-name-' + gapType);
+          
+          let tokenName = '';
+          let tokenId = null;
 
-          if (!tokenName) {
-            showMessage('Por favor, ingresa un nombre para el token', 'error');
+          // Check if a token is selected from dropdown
+          if (tokenSelect && tokenSelect.value !== '') {
+            tokenId = tokenSelect.value;
+            tokenName = tokenSelect.options[tokenSelect.selectedIndex].text;
+          } else if (tokenInput) {
+            // Use new token name
+            tokenName = tokenInput.value.trim();
+            if (!tokenName) {
+              showMessage('Por favor, selecciona un token existente o ingresa un nombre para el nuevo token', 'error');
+              return;
+            }
+          } else {
+            showMessage('Por favor, selecciona un token existente o ingresa un nombre para el nuevo token', 'error');
             return;
           }
 
@@ -360,6 +478,7 @@
               type: 'link-token',
               nodeId: gapInfo.nodeId,
               tokenName: tokenName,
+              tokenId: tokenId,
               gapType: gapType
             }
           }, '*');
@@ -378,9 +497,11 @@
       if (msg.type === 'scan-result') {
         if (msg.data.success) {
           currentGapInfo = msg.data.gapInfo;
+          availableTokens = msg.data.availableTokens || [];
           renderGapInfo(currentGapInfo);
         } else {
           currentGapInfo = null;
+          availableTokens = [];
           renderGapInfo(null);
           if (msg.data.message) {
             showMessage(msg.data.message, 'info');

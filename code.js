@@ -8,6 +8,37 @@ function isFrameOrAutoLayout(node) {
   return node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE';
 }
 
+// Helper function to get variable name from variable ID
+function getVariableName(variableId) {
+  try {
+    if (!figma.variables) {
+      return null;
+    }
+    const variable = figma.variables.getVariableById(variableId);
+    return variable ? variable.name : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Helper function to check if a property is bound to a variable
+function getBoundVariableInfo(node, propertyName) {
+  try {
+    const boundVariable = node.getBoundVariable(propertyName);
+    if (boundVariable && boundVariable.type === 'VARIABLE_ALIAS') {
+      const variableName = getVariableName(boundVariable.id);
+      return {
+        isBound: true,
+        variableId: boundVariable.id,
+        variableName: variableName
+      };
+    }
+    return { isBound: false, variableId: null, variableName: null };
+  } catch (error) {
+    return { isBound: false, variableId: null, variableName: null };
+  }
+}
+
 // Helper function to get gap information from a node
 function getGapInfo(node) {
   if (!isFrameOrAutoLayout(node)) {
@@ -20,11 +51,17 @@ function getGapInfo(node) {
     nodeType: node.type,
     hasAutoLayout: false,
     itemSpacing: null,
+    itemSpacingToken: null,
     counterAxisSpacing: null,
+    counterAxisSpacingToken: null,
     paddingTop: null,
+    paddingTopToken: null,
     paddingRight: null,
+    paddingRightToken: null,
     paddingBottom: null,
+    paddingBottomToken: null,
     paddingLeft: null,
+    paddingLeftToken: null,
     layoutMode: null,
     primaryAxisAlignItems: null,
     counterAxisAlignItems: null
@@ -38,15 +75,66 @@ function getGapInfo(node) {
     gapInfo.counterAxisSpacing = node.counterAxisSpacing;
     gapInfo.primaryAxisAlignItems = node.primaryAxisAlignItems;
     gapInfo.counterAxisAlignItems = node.counterAxisAlignItems;
+
+    // Check if itemSpacing is bound to a variable
+    const itemSpacingVar = getBoundVariableInfo(node, 'itemSpacing');
+    if (itemSpacingVar.isBound) {
+      gapInfo.itemSpacingToken = itemSpacingVar.variableName;
+    }
+
+    // Check if counterAxisSpacing is bound to a variable
+    const counterAxisSpacingVar = getBoundVariableInfo(node, 'counterAxisSpacing');
+    if (counterAxisSpacingVar.isBound) {
+      gapInfo.counterAxisSpacingToken = counterAxisSpacingVar.variableName;
+    }
   }
 
-  // Get padding values
+  // Get padding values and check if they're bound to variables
   gapInfo.paddingTop = node.paddingTop;
+  const paddingTopVar = getBoundVariableInfo(node, 'paddingTop');
+  if (paddingTopVar.isBound) {
+    gapInfo.paddingTopToken = paddingTopVar.variableName;
+  }
+
   gapInfo.paddingRight = node.paddingRight;
+  const paddingRightVar = getBoundVariableInfo(node, 'paddingRight');
+  if (paddingRightVar.isBound) {
+    gapInfo.paddingRightToken = paddingRightVar.variableName;
+  }
+
   gapInfo.paddingBottom = node.paddingBottom;
+  const paddingBottomVar = getBoundVariableInfo(node, 'paddingBottom');
+  if (paddingBottomVar.isBound) {
+    gapInfo.paddingBottomToken = paddingBottomVar.variableName;
+  }
+
   gapInfo.paddingLeft = node.paddingLeft;
+  const paddingLeftVar = getBoundVariableInfo(node, 'paddingLeft');
+  if (paddingLeftVar.isBound) {
+    gapInfo.paddingLeftToken = paddingLeftVar.variableName;
+  }
 
   return gapInfo;
+}
+
+// Function to get all available tokens (variables)
+function getAvailableTokens() {
+  try {
+    if (!figma.variables) {
+      return [];
+    }
+    const variables = figma.variables.getLocalVariables();
+    // Filter only FLOAT variables (for spacing/gaps)
+    return variables
+      .filter(v => v.resolvedType === 'FLOAT')
+      .map(v => ({
+        id: v.id,
+        name: v.name
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    return [];
+  }
 }
 
 // Function to scan selected nodes
@@ -77,14 +165,18 @@ function scanSelection() {
     };
   }
 
+  // Get available tokens
+  const availableTokens = getAvailableTokens();
+
   return {
     success: true,
-    gapInfo: gapInfo
+    gapInfo: gapInfo,
+    availableTokens: availableTokens
   };
 }
 
 // Function to link gap to a design token (variable)
-function linkGapToToken(nodeId, tokenName, gapType) {
+function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
   try {
     const node = figma.getNodeById(nodeId);
     if (!node || !isFrameOrAutoLayout(node)) {
@@ -102,33 +194,46 @@ function linkGapToToken(nodeId, tokenName, gapType) {
       };
     }
 
-    // Get all variables in the document
-    const variables = figma.variables.getLocalVariables();
-    
-    // Try to find existing variable with the token name
-    let variable = variables.find(v => v.name === tokenName);
+    let variable = null;
 
-    // If variable doesn't exist, create it
-    if (!variable) {
-      // Get the gap value to create the variable
-      let gapValue = 0;
-      if (gapType === 'itemSpacing' && node.itemSpacing) {
-        gapValue = node.itemSpacing;
-      } else if (gapType === 'counterAxisSpacing' && node.counterAxisSpacing) {
-        gapValue = node.counterAxisSpacing;
-      } else if (gapType === 'paddingTop' && node.paddingTop) {
-        gapValue = node.paddingTop;
-      } else if (gapType === 'paddingRight' && node.paddingRight) {
-        gapValue = node.paddingRight;
-      } else if (gapType === 'paddingBottom' && node.paddingBottom) {
-        gapValue = node.paddingBottom;
-      } else if (gapType === 'paddingLeft' && node.paddingLeft) {
-        gapValue = node.paddingLeft;
+    // If tokenId is provided, use existing token
+    if (tokenId) {
+      variable = figma.variables.getVariableById(tokenId);
+      if (!variable) {
+        return {
+          success: false,
+          message: 'No se pudo encontrar el token seleccionado'
+        };
       }
+    } else {
+      // Get all variables in the document
+      const variables = figma.variables.getLocalVariables();
+      
+      // Try to find existing variable with the token name
+      variable = variables.find(v => v.name === tokenName);
 
-      // Create a new variable for spacing
-      variable = figma.variables.createVariable(tokenName, 'FLOAT');
-      variable.setValueForMode(variable.modes[0].modeId, gapValue);
+      // If variable doesn't exist, create it
+      if (!variable) {
+        // Get the gap value to create the variable
+        let gapValue = 0;
+        if (gapType === 'itemSpacing' && node.itemSpacing) {
+          gapValue = node.itemSpacing;
+        } else if (gapType === 'counterAxisSpacing' && node.counterAxisSpacing) {
+          gapValue = node.counterAxisSpacing;
+        } else if (gapType === 'paddingTop' && node.paddingTop) {
+          gapValue = node.paddingTop;
+        } else if (gapType === 'paddingRight' && node.paddingRight) {
+          gapValue = node.paddingRight;
+        } else if (gapType === 'paddingBottom' && node.paddingBottom) {
+          gapValue = node.paddingBottom;
+        } else if (gapType === 'paddingLeft' && node.paddingLeft) {
+          gapValue = node.paddingLeft;
+        }
+
+        // Create a new variable for spacing
+        variable = figma.variables.createVariable(tokenName, 'FLOAT');
+        variable.setValueForMode(variable.modes[0].modeId, gapValue);
+      }
     }
 
     // Apply the variable to the gap
@@ -184,7 +289,7 @@ if (figma.editorType === 'figma') {
       const scanResult = scanSelection();
       figma.ui.postMessage({ type: 'scan-result', data: scanResult });
     } else if (msg.type === 'link-token') {
-      const result = linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType);
+      const result = linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType, msg.tokenId);
       figma.ui.postMessage({ type: 'link-result', data: result });
       
       // Re-scan after linking to update UI
