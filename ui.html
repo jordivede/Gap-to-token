@@ -415,7 +415,15 @@
 
       let options = '<option value="">— Crear nuevo token —</option>';
       tokens.forEach(token => {
-        options += `<option value="${token.id}">${token.name}</option>`;
+        let displayText = token.name;
+        if (token.value !== null && token.value !== undefined) {
+          // Format the value nicely (handle decimal values)
+          const formattedValue = Number.isInteger(token.value) 
+            ? token.value 
+            : token.value.toFixed(1);
+          displayText = `${token.name} — ${formattedValue}px`;
+        }
+        options += `<option value="${token.id}">${displayText}</option>`;
       });
 
       return `
@@ -570,7 +578,9 @@
 
           if (tokenSelect && tokenSelect.value !== '') {
             tokenId = tokenSelect.value;
-            tokenName = tokenSelect.options[tokenSelect.selectedIndex].text;
+            // Extract token name without the value part (e.g., "token-name — 16px" -> "token-name")
+            const optionText = tokenSelect.options[tokenSelect.selectedIndex].text;
+            tokenName = optionText.split(' — ')[0].trim();
           } else if (tokenInput) {
             tokenName = tokenInput.value.trim();
             if (!tokenName) {

@@ -12,7 +12,7 @@ function getVariableName(variableId) {
     if (!figma.variables) return null;
     const variable = figma.variables.getVariableById(variableId);
     return variable ? variable.name : null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -21,14 +21,14 @@ function getVariableName(variableId) {
 function getBoundVariableInfo(node, propertyName) {
   try {
     const boundVariable = node.getBoundVariable(propertyName);
-    if (boundVariable?.type === 'VARIABLE_ALIAS') {
+    if (boundVariable && boundVariable.type === 'VARIABLE_ALIAS') {
       return {
         isBound: true,
         variableId: boundVariable.id,
         variableName: getVariableName(boundVariable.id)
       };
     }
-  } catch {
+  } catch (e) {
     // Property might not support variables
   }
   return { isBound: false, variableId: null, variableName: null };
@@ -90,20 +90,45 @@ function getGapInfo(node) {
 }
 
 // Get all available spacing tokens (FLOAT variables)
-function getAvailableTokens() {
+async function getAvailableTokens() {
   try {
     if (!figma.variables) return [];
-    return figma.variables.getLocalVariables()
+    const variables = await figma.variables.getLocalVariablesAsync();
+    return variables
       .filter(v => v.resolvedType === 'FLOAT')
-      .map(v => ({ id: v.id, name: v.name }))
+      .map(v => {
+        let value = null;
+        // Get value from first available mode
+        if (v.modes && v.modes.length > 0) {
+          const modeId = v.modes[0].modeId;
+          try {
+            // Try getValueForMode first
+            value = v.getValueForMode(modeId);
+          } catch (e) {
+            // If getValueForMode fails, try valuesByMode
+            try {
+              if (v.valuesByMode && v.valuesByMode[modeId] !== undefined) {
+                value = v.valuesByMode[modeId];
+              }
+            } catch (e2) {
+              // If both fail, value remains null
+            }
+          }
+        }
+        return { 
+          id: v.id, 
+          name: v.name,
+          value: typeof value === 'number' ? value : null
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
-  } catch {
+  } catch (e) {
     return [];
   }
 }
 
 // Scan selected nodes
-function scanSelection() {
+async function scanSelection() {
   const selection = figma.currentPage.selection;
   
   if (selection.length === 0) {
@@ -133,7 +158,7 @@ function scanSelection() {
   return {
     success: true,
     gapInfo: gapInfo,
-    availableTokens: getAvailableTokens()
+    availableTokens: await getAvailableTokens()
   };
 }
 
@@ -168,7 +193,7 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
       }
     } else {
       // Find or create variable
-      const variables = figma.variables.getLocalVariables();
+      const variables = await figma.variables.getLocalVariablesAsync();
       variable = variables.find(v => v.name === tokenName);
 
       if (!variable) {
@@ -226,27 +251,31 @@ if (figma.editorType === 'figma') {
   figma.showUI(__html__, { width: 420, height: 640 });
 
   // Initial scan
-  const initialScan = scanSelection();
-  figma.ui.postMessage({ type: 'scan-result', data: initialScan });
+  scanSelection().then(initialScan => {
+    figma.ui.postMessage({ type: 'scan-result', data: initialScan });
+  });
 
   // Listen for selection changes
   figma.on('selectionchange', () => {
-    const scanResult = scanSelection();
-    figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+    scanSelection().then(scanResult => {
+      figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+    });
   });
 
   // Handle UI messages
   figma.ui.onmessage = (msg) => {
     if (msg.type === 'scan') {
-      const scanResult = scanSelection();
-      figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+      scanSelection().then(scanResult => {
+        figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+      });
     } else if (msg.type === 'link-token') {
       linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType, msg.tokenId)
         .then(result => {
           figma.ui.postMessage({ type: 'link-result', data: result });
           setTimeout(() => {
-            const scanResult = scanSelection();
-            figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+            scanSelection().then(scanResult => {
+              figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+            });
           }, 100);
         })
         .catch(error => {
