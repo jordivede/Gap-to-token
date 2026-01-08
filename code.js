@@ -176,9 +176,9 @@ function scanSelection() {
 }
 
 // Function to link gap to a design token (variable)
-function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
+async function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
   try {
-    const node = figma.getNodeById(nodeId);
+    const node = await figma.getNodeByIdAsync(nodeId);
     if (!node || !isFrameOrAutoLayout(node)) {
       return {
         success: false,
@@ -289,14 +289,23 @@ if (figma.editorType === 'figma') {
       const scanResult = scanSelection();
       figma.ui.postMessage({ type: 'scan-result', data: scanResult });
     } else if (msg.type === 'link-token') {
-      const result = linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType, msg.tokenId);
-      figma.ui.postMessage({ type: 'link-result', data: result });
-      
-      // Re-scan after linking to update UI
-      setTimeout(() => {
-        const scanResult = scanSelection();
-        figma.ui.postMessage({ type: 'scan-result', data: scanResult });
-      }, 100);
+      linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType, msg.tokenId).then(result => {
+        figma.ui.postMessage({ type: 'link-result', data: result });
+        
+        // Re-scan after linking to update UI
+        setTimeout(() => {
+          const scanResult = scanSelection();
+          figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+        }, 100);
+      }).catch(error => {
+        figma.ui.postMessage({ 
+          type: 'link-result', 
+          data: { 
+            success: false, 
+            message: 'Error al vincular: ' + error.message 
+          } 
+        });
+      });
     } else if (msg.type === 'cancel') {
       figma.closePlugin();
     }
