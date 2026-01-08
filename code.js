@@ -1,49 +1,42 @@
-// This file holds the main code for plugins. Code in this file has access to
-// the *figma document* via the figma global object.
-// You can access browser APIs in the <script> tag inside "ui.html" which has a
-// full browser environment (See https://www.figma.com/plugin-docs/how-plugins-run).
+// Gap to Token - Figma Plugin
+// Scans gaps from frames/autolayouts and links them to design tokens
 
-// Helper function to check if a node is a Frame or AutoLayout
+// Helper: Check if node is Frame or AutoLayout
 function isFrameOrAutoLayout(node) {
-  return node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE';
+  return ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'].includes(node.type);
 }
 
-// Helper function to get variable name from variable ID
+// Helper: Get variable name from ID
 function getVariableName(variableId) {
   try {
-    if (!figma.variables) {
-      return null;
-    }
+    if (!figma.variables) return null;
     const variable = figma.variables.getVariableById(variableId);
     return variable ? variable.name : null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
 
-// Helper function to check if a property is bound to a variable
+// Helper: Check if property is bound to variable
 function getBoundVariableInfo(node, propertyName) {
   try {
     const boundVariable = node.getBoundVariable(propertyName);
-    if (boundVariable && boundVariable.type === 'VARIABLE_ALIAS') {
-      const variableName = getVariableName(boundVariable.id);
+    if (boundVariable?.type === 'VARIABLE_ALIAS') {
       return {
         isBound: true,
         variableId: boundVariable.id,
-        variableName: variableName
+        variableName: getVariableName(boundVariable.id)
       };
     }
-    return { isBound: false, variableId: null, variableName: null };
-  } catch (error) {
-    return { isBound: false, variableId: null, variableName: null };
+  } catch {
+    // Property might not support variables
   }
+  return { isBound: false, variableId: null, variableName: null };
 }
 
-// Helper function to get gap information from a node
+// Helper: Get gap information from node
 function getGapInfo(node) {
-  if (!isFrameOrAutoLayout(node)) {
-    return null;
-  }
+  if (!isFrameOrAutoLayout(node)) return null;
 
   const gapInfo = {
     nodeId: node.id,
@@ -62,96 +55,68 @@ function getGapInfo(node) {
     paddingBottomToken: null,
     paddingLeft: null,
     paddingLeftToken: null,
-    layoutMode: null,
-    primaryAxisAlignItems: null,
-    counterAxisAlignItems: null
+    layoutMode: null
   };
 
-  // Check if it's an autolayout
+  // Check AutoLayout properties
   if (node.layoutMode !== 'NONE') {
     gapInfo.hasAutoLayout = true;
     gapInfo.layoutMode = node.layoutMode;
     gapInfo.itemSpacing = node.itemSpacing;
     gapInfo.counterAxisSpacing = node.counterAxisSpacing;
-    gapInfo.primaryAxisAlignItems = node.primaryAxisAlignItems;
-    gapInfo.counterAxisAlignItems = node.counterAxisAlignItems;
 
-    // Check if itemSpacing is bound to a variable
     const itemSpacingVar = getBoundVariableInfo(node, 'itemSpacing');
     if (itemSpacingVar.isBound) {
       gapInfo.itemSpacingToken = itemSpacingVar.variableName;
     }
 
-    // Check if counterAxisSpacing is bound to a variable
     const counterAxisSpacingVar = getBoundVariableInfo(node, 'counterAxisSpacing');
     if (counterAxisSpacingVar.isBound) {
       gapInfo.counterAxisSpacingToken = counterAxisSpacingVar.variableName;
     }
   }
 
-  // Get padding values and check if they're bound to variables
-  gapInfo.paddingTop = node.paddingTop;
-  const paddingTopVar = getBoundVariableInfo(node, 'paddingTop');
-  if (paddingTopVar.isBound) {
-    gapInfo.paddingTopToken = paddingTopVar.variableName;
-  }
-
-  gapInfo.paddingRight = node.paddingRight;
-  const paddingRightVar = getBoundVariableInfo(node, 'paddingRight');
-  if (paddingRightVar.isBound) {
-    gapInfo.paddingRightToken = paddingRightVar.variableName;
-  }
-
-  gapInfo.paddingBottom = node.paddingBottom;
-  const paddingBottomVar = getBoundVariableInfo(node, 'paddingBottom');
-  if (paddingBottomVar.isBound) {
-    gapInfo.paddingBottomToken = paddingBottomVar.variableName;
-  }
-
-  gapInfo.paddingLeft = node.paddingLeft;
-  const paddingLeftVar = getBoundVariableInfo(node, 'paddingLeft');
-  if (paddingLeftVar.isBound) {
-    gapInfo.paddingLeftToken = paddingLeftVar.variableName;
-  }
+  // Get padding values and check for bound variables
+  const paddingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
+  paddingProps.forEach(prop => {
+    gapInfo[prop] = node[prop];
+    const varInfo = getBoundVariableInfo(node, prop);
+    if (varInfo.isBound) {
+      gapInfo[prop + 'Token'] = varInfo.variableName;
+    }
+  });
 
   return gapInfo;
 }
 
-// Function to get all available tokens (variables)
+// Get all available spacing tokens (FLOAT variables)
 function getAvailableTokens() {
   try {
-    if (!figma.variables) {
-      return [];
-    }
-    const variables = figma.variables.getLocalVariables();
-    // Filter only FLOAT variables (for spacing/gaps)
-    return variables
+    if (!figma.variables) return [];
+    return figma.variables.getLocalVariables()
       .filter(v => v.resolvedType === 'FLOAT')
-      .map(v => ({
-        id: v.id,
-        name: v.name
-      }))
+      .map(v => ({ id: v.id, name: v.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  } catch (error) {
+  } catch {
     return [];
   }
 }
 
-// Function to scan selected nodes
+// Scan selected nodes
 function scanSelection() {
   const selection = figma.currentPage.selection;
   
   if (selection.length === 0) {
     return {
       success: false,
-      message: 'Por favor, selecciona un Frame o AutoLayout'
+      message: 'Selecciona un Frame o AutoLayout'
     };
   }
 
   if (selection.length > 1) {
     return {
       success: false,
-      message: 'Por favor, selecciona solo un Frame o AutoLayout'
+      message: 'Selecciona solo un elemento'
     };
   }
 
@@ -165,17 +130,14 @@ function scanSelection() {
     };
   }
 
-  // Get available tokens
-  const availableTokens = getAvailableTokens();
-
   return {
     success: true,
     gapInfo: gapInfo,
-    availableTokens: availableTokens
+    availableTokens: getAvailableTokens()
   };
 }
 
-// Function to link gap to a design token (variable)
+// Link gap to design token
 async function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
   try {
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -186,17 +148,16 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
       };
     }
 
-    // Check if variables API is available
     if (!figma.variables) {
       return {
         success: false,
-        message: 'La API de Variables no está disponible. Asegúrate de usar Figma con soporte para Variables.'
+        message: 'La API de Variables no está disponible'
       };
     }
 
     let variable = null;
 
-    // If tokenId is provided, use existing token
+    // Use existing token if ID provided
     if (tokenId) {
       variable = figma.variables.getVariableById(tokenId);
       if (!variable) {
@@ -206,74 +167,65 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId) {
         };
       }
     } else {
-      // Get all variables in the document
+      // Find or create variable
       const variables = figma.variables.getLocalVariables();
-      
-      // Try to find existing variable with the token name
       variable = variables.find(v => v.name === tokenName);
 
-      // If variable doesn't exist, create it
       if (!variable) {
-        // Get the gap value to create the variable
-        let gapValue = 0;
-        if (gapType === 'itemSpacing' && node.itemSpacing) {
-          gapValue = node.itemSpacing;
-        } else if (gapType === 'counterAxisSpacing' && node.counterAxisSpacing) {
-          gapValue = node.counterAxisSpacing;
-        } else if (gapType === 'paddingTop' && node.paddingTop) {
-          gapValue = node.paddingTop;
-        } else if (gapType === 'paddingRight' && node.paddingRight) {
-          gapValue = node.paddingRight;
-        } else if (gapType === 'paddingBottom' && node.paddingBottom) {
-          gapValue = node.paddingBottom;
-        } else if (gapType === 'paddingLeft' && node.paddingLeft) {
-          gapValue = node.paddingLeft;
-        }
+        // Get gap value
+        const gapValueMap = {
+          itemSpacing: node.itemSpacing,
+          counterAxisSpacing: node.counterAxisSpacing,
+          paddingTop: node.paddingTop,
+          paddingRight: node.paddingRight,
+          paddingBottom: node.paddingBottom,
+          paddingLeft: node.paddingLeft
+        };
 
-        // Create a new variable for spacing
+        const gapValue = gapValueMap[gapType] || 0;
+
+        // Create new variable
         variable = figma.variables.createVariable(tokenName, 'FLOAT');
         variable.setValueForMode(variable.modes[0].modeId, gapValue);
       }
     }
 
-    // Apply the variable to the gap
-    const modeId = variable.modes[0].modeId;
+    // Apply variable to gap
     const variableAlias = {
       type: 'VARIABLE_ALIAS',
       id: variable.id
     };
 
-    if (gapType === 'itemSpacing' && node.layoutMode !== 'NONE') {
-      node.setBoundVariable('itemSpacing', variableAlias);
-    } else if (gapType === 'counterAxisSpacing' && node.layoutMode !== 'NONE') {
-      node.setBoundVariable('counterAxisSpacing', variableAlias);
-    } else if (gapType === 'paddingTop') {
-      node.setBoundVariable('paddingTop', variableAlias);
-    } else if (gapType === 'paddingRight') {
-      node.setBoundVariable('paddingRight', variableAlias);
-    } else if (gapType === 'paddingBottom') {
-      node.setBoundVariable('paddingBottom', variableAlias);
-    } else if (gapType === 'paddingLeft') {
-      node.setBoundVariable('paddingLeft', variableAlias);
+    const gapTypeMap = {
+      itemSpacing: () => node.layoutMode !== 'NONE' && node.setBoundVariable('itemSpacing', variableAlias),
+      counterAxisSpacing: () => node.layoutMode !== 'NONE' && node.setBoundVariable('counterAxisSpacing', variableAlias),
+      paddingTop: () => node.setBoundVariable('paddingTop', variableAlias),
+      paddingRight: () => node.setBoundVariable('paddingRight', variableAlias),
+      paddingBottom: () => node.setBoundVariable('paddingBottom', variableAlias),
+      paddingLeft: () => node.setBoundVariable('paddingLeft', variableAlias)
+    };
+
+    if (gapTypeMap[gapType]) {
+      gapTypeMap[gapType]();
     }
 
     return {
       success: true,
-      message: 'Gap vinculado exitosamente al token "' + tokenName + '"'
+      message: `Vinculado al token "${variable.name}"`
     };
   } catch (error) {
     return {
       success: false,
-      message: 'Error al vincular: ' + error.message
+      message: `Error: ${error.message}`
     };
   }
 }
 
-// Main plugin code - only runs in Figma
+// Main plugin code
 if (figma.editorType === 'figma') {
-  figma.showUI(__html__, { width: 400, height: 600 });
+  figma.showUI(__html__, { width: 420, height: 640 });
 
-  // Send initial scan when plugin opens
+  // Initial scan
   const initialScan = scanSelection();
   figma.ui.postMessage({ type: 'scan-result', data: initialScan });
 
@@ -283,35 +235,34 @@ if (figma.editorType === 'figma') {
     figma.ui.postMessage({ type: 'scan-result', data: scanResult });
   });
 
-  // Handle messages from UI
+  // Handle UI messages
   figma.ui.onmessage = (msg) => {
     if (msg.type === 'scan') {
       const scanResult = scanSelection();
       figma.ui.postMessage({ type: 'scan-result', data: scanResult });
     } else if (msg.type === 'link-token') {
-      linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType, msg.tokenId).then(result => {
-        figma.ui.postMessage({ type: 'link-result', data: result });
-        
-        // Re-scan after linking to update UI
-        setTimeout(() => {
-          const scanResult = scanSelection();
-          figma.ui.postMessage({ type: 'scan-result', data: scanResult });
-        }, 100);
-      }).catch(error => {
-        figma.ui.postMessage({ 
-          type: 'link-result', 
-          data: { 
-            success: false, 
-            message: 'Error al vincular: ' + error.message 
-          } 
+      linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType, msg.tokenId)
+        .then(result => {
+          figma.ui.postMessage({ type: 'link-result', data: result });
+          setTimeout(() => {
+            const scanResult = scanSelection();
+            figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+          }, 100);
+        })
+        .catch(error => {
+          figma.ui.postMessage({
+            type: 'link-result',
+            data: {
+              success: false,
+              message: `Error: ${error.message}`
+            }
+          });
         });
-      });
     } else if (msg.type === 'cancel') {
       figma.closePlugin();
     }
   };
 } else {
-  // Show message for other editor types
   figma.notify('Este plugin solo funciona en Figma');
   figma.closePlugin();
 }
