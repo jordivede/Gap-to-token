@@ -154,12 +154,12 @@ function linkGapToToken(nodeId, tokenName, gapType) {
 
     return {
       success: true,
-      message: `Gap vinculado exitosamente al token "${tokenName}"`
+      message: 'Gap vinculado exitosamente al token "' + tokenName + '"'
     };
   } catch (error) {
     return {
       success: false,
-      message: `Error al vincular: ${error.message}`
+      message: 'Error al vincular: ' + error.message
     };
   }
 }

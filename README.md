@@ -1,40 +1,51 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Gap to Token - Plugin de Figma
 
-  https://www.figma.com/plugin-docs/plugin-quickstart-guide/
+Plugin de Figma que permite escanear el gap de frames y autolayouts seleccionados y vincularlos automáticamente a tokens de diseño (variables).
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+## Descripción
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
+Este plugin te permite:
+- Escanear gaps de AutoLayout (itemSpacing, counterAxisSpacing)
+- Escanear valores de padding
+- Vincular gaps a tokens de diseño (variables de Figma)
+- Crear nuevos tokens automáticamente si no existen
 
-  https://nodejs.org/en/download/
+## Instalación
 
-Next, install TypeScript using the command:
+1. Abre Figma Desktop
+2. Ve a `Plugins > Development > Import plugin from manifest...`
+3. Selecciona el archivo `manifest.json` de este proyecto
 
-  npm install -g typescript
+## Uso
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
+1. Selecciona un Frame o AutoLayout en tu diseño
+2. Abre el plugin "Gap to Token"
+3. El plugin mostrará automáticamente todos los gaps detectados
+4. Ingresa un nombre para el token (ej: `spacing-md`, `gap-16`)
+5. Haz clic en "Vincular a Token" para vincular el gap deseado
 
-  npm install --save-dev @figma/plugin-typings
+## Requisitos
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
+- Figma Desktop (las variables solo están disponibles en la versión de escritorio)
+- Una cuenta de Figma con acceso a Variables (Design Tokens)
 
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
+## Estructura del Proyecto
 
-For more information, visit https://www.typescriptlang.org/
+- `code.js` - Código principal del plugin (JavaScript)
+- `ui.html` - Interfaz de usuario del plugin
+- `manifest.json` - Configuración del plugin
 
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
+## Desarrollo
 
-We recommend writing TypeScript code using Visual Studio code:
+Este plugin está escrito en JavaScript puro, sin dependencias de TypeScript.
 
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
+Para desarrollar:
+1. Edita `code.js` para modificar la lógica del plugin
+2. Edita `ui.html` para modificar la interfaz
+3. Recarga el plugin en Figma para ver los cambios
 
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
+## Notas
+
+- El plugin solo funciona en Figma (no en FigJam, Slides o Buzz)
+- Las variables de Figma deben estar habilitadas en tu cuenta
+- Los tokens se crean automáticamente si no existen con el nombre especificado

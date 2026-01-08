@@ -1,16 +1,12 @@
 {
   "name": "Gap-to-token",
   "version": "1.0.0",
-  "description": "Your Figma Plugin",
+  "description": "Figma plugin to scan gaps and link them to design tokens",
   "main": "code.js",
-  "scripts": {
-    
-  },
+  "scripts": {},
   "author": "",
   "license": "",
-  "devDependencies": {
-    
-  },
+  "devDependencies": {},
   "eslintConfig": {
     "extends": [
       "eslint:recommended"
