@@ -3,161 +3,201 @@
 // You can access browser APIs in the <script> tag inside "ui.html" which has a
 // full browser environment (See https://www.figma.com/plugin-docs/how-plugins-run).
 
-// Runs this code if the plugin is run in Figma
+// Helper function to check if a node is a Frame or AutoLayout
+function isFrameOrAutoLayout(node) {
+  return node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE';
+}
+
+// Helper function to get gap information from a node
+function getGapInfo(node) {
+  if (!isFrameOrAutoLayout(node)) {
+    return null;
+  }
+
+  const gapInfo = {
+    nodeId: node.id,
+    nodeName: node.name,
+    nodeType: node.type,
+    hasAutoLayout: false,
+    itemSpacing: null,
+    counterAxisSpacing: null,
+    paddingTop: null,
+    paddingRight: null,
+    paddingBottom: null,
+    paddingLeft: null,
+    layoutMode: null,
+    primaryAxisAlignItems: null,
+    counterAxisAlignItems: null
+  };
+
+  // Check if it's an autolayout
+  if (node.layoutMode !== 'NONE') {
+    gapInfo.hasAutoLayout = true;
+    gapInfo.layoutMode = node.layoutMode;
+    gapInfo.itemSpacing = node.itemSpacing;
+    gapInfo.counterAxisSpacing = node.counterAxisSpacing;
+    gapInfo.primaryAxisAlignItems = node.primaryAxisAlignItems;
+    gapInfo.counterAxisAlignItems = node.counterAxisAlignItems;
+  }
+
+  // Get padding values
+  gapInfo.paddingTop = node.paddingTop;
+  gapInfo.paddingRight = node.paddingRight;
+  gapInfo.paddingBottom = node.paddingBottom;
+  gapInfo.paddingLeft = node.paddingLeft;
+
+  return gapInfo;
+}
+
+// Function to scan selected nodes
+function scanSelection() {
+  const selection = figma.currentPage.selection;
+  
+  if (selection.length === 0) {
+    return {
+      success: false,
+      message: 'Por favor, selecciona un Frame o AutoLayout'
+    };
+  }
+
+  if (selection.length > 1) {
+    return {
+      success: false,
+      message: 'Por favor, selecciona solo un Frame o AutoLayout'
+    };
+  }
+
+  const node = selection[0];
+  const gapInfo = getGapInfo(node);
+
+  if (!gapInfo) {
+    return {
+      success: false,
+      message: 'El elemento seleccionado no es un Frame o AutoLayout'
+    };
+  }
+
+  return {
+    success: true,
+    gapInfo: gapInfo
+  };
+}
+
+// Function to link gap to a design token (variable)
+function linkGapToToken(nodeId, tokenName, gapType) {
+  try {
+    const node = figma.getNodeById(nodeId);
+    if (!node || !isFrameOrAutoLayout(node)) {
+      return {
+        success: false,
+        message: 'No se pudo encontrar el nodo'
+      };
+    }
+
+    // Check if variables API is available
+    if (!figma.variables) {
+      return {
+        success: false,
+        message: 'La API de Variables no está disponible. Asegúrate de usar Figma con soporte para Variables.'
+      };
+    }
+
+    // Get all variables in the document
+    const variables = figma.variables.getLocalVariables();
+    
+    // Try to find existing variable with the token name
+    let variable = variables.find(v => v.name === tokenName);
+
+    // If variable doesn't exist, create it
+    if (!variable) {
+      // Get the gap value to create the variable
+      let gapValue = 0;
+      if (gapType === 'itemSpacing' && node.itemSpacing) {
+        gapValue = node.itemSpacing;
+      } else if (gapType === 'counterAxisSpacing' && node.counterAxisSpacing) {
+        gapValue = node.counterAxisSpacing;
+      } else if (gapType === 'paddingTop' && node.paddingTop) {
+        gapValue = node.paddingTop;
+      } else if (gapType === 'paddingRight' && node.paddingRight) {
+        gapValue = node.paddingRight;
+      } else if (gapType === 'paddingBottom' && node.paddingBottom) {
+        gapValue = node.paddingBottom;
+      } else if (gapType === 'paddingLeft' && node.paddingLeft) {
+        gapValue = node.paddingLeft;
+      }
+
+      // Create a new variable for spacing
+      variable = figma.variables.createVariable(tokenName, 'FLOAT');
+      variable.setValueForMode(variable.modes[0].modeId, gapValue);
+    }
+
+    // Apply the variable to the gap
+    const modeId = variable.modes[0].modeId;
+    const variableAlias = {
+      type: 'VARIABLE_ALIAS',
+      id: variable.id
+    };
+
+    if (gapType === 'itemSpacing' && node.layoutMode !== 'NONE') {
+      node.setBoundVariable('itemSpacing', variableAlias);
+    } else if (gapType === 'counterAxisSpacing' && node.layoutMode !== 'NONE') {
+      node.setBoundVariable('counterAxisSpacing', variableAlias);
+    } else if (gapType === 'paddingTop') {
+      node.setBoundVariable('paddingTop', variableAlias);
+    } else if (gapType === 'paddingRight') {
+      node.setBoundVariable('paddingRight', variableAlias);
+    } else if (gapType === 'paddingBottom') {
+      node.setBoundVariable('paddingBottom', variableAlias);
+    } else if (gapType === 'paddingLeft') {
+      node.setBoundVariable('paddingLeft', variableAlias);
+    }
+
+    return {
+      success: true,
+      message: `Gap vinculado exitosamente al token "${tokenName}"`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Error al vincular: ${error.message}`
+    };
+  }
+}
+
+// Main plugin code - only runs in Figma
 if (figma.editorType === 'figma') {
-  // This plugin will open a window to prompt the user to enter a number, and
-  // it will then create that many rectangles on the screen.
+  figma.showUI(__html__, { width: 400, height: 600 });
 
-  // This shows the HTML page in "ui.html".
-  figma.showUI(__html__);
+  // Send initial scan when plugin opens
+  const initialScan = scanSelection();
+  figma.ui.postMessage({ type: 'scan-result', data: initialScan });
 
-  // Calls to "parent.postMessage" from within the HTML page will trigger this
-  // callback. The callback will be passed the "pluginMessage" property of the
-  // posted message.
+  // Listen for selection changes
+  figma.on('selectionchange', () => {
+    const scanResult = scanSelection();
+    figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+  });
+
+  // Handle messages from UI
   figma.ui.onmessage = (msg) => {
-    // One way of distinguishing between different types of messages sent from
-    // your HTML page is to use an object with a "type" property like this.
-    if (msg.type === 'create-shapes') {
-      // This plugin creates rectangles on the screen.
-      const numberOfRectangles = msg.count;
-
-      const nodes = [];
-      for (let i = 0; i < numberOfRectangles; i++) {
-        const rect = figma.createRectangle();
-        rect.x = i * 150;
-        rect.fills = [{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0 } }];
-        figma.currentPage.appendChild(rect);
-        nodes.push(rect);
-      }
-      figma.currentPage.selection = nodes;
-      figma.viewport.scrollAndZoomIntoView(nodes);
+    if (msg.type === 'scan') {
+      const scanResult = scanSelection();
+      figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+    } else if (msg.type === 'link-token') {
+      const result = linkGapToToken(msg.nodeId, msg.tokenName, msg.gapType);
+      figma.ui.postMessage({ type: 'link-result', data: result });
+      
+      // Re-scan after linking to update UI
+      setTimeout(() => {
+        const scanResult = scanSelection();
+        figma.ui.postMessage({ type: 'scan-result', data: scanResult });
+      }, 100);
+    } else if (msg.type === 'cancel') {
+      figma.closePlugin();
     }
-
-    // Make sure to close the plugin when you're done. Otherwise the plugin will
-    // keep running, which shows the cancel button at the bottom of the screen.
-    figma.closePlugin();
   };
-}
-
-// Runs this code if the plugin is run in FigJam
-if (figma.editorType === 'figjam') {
-  // This plugin will open a window to prompt the user to enter a number, and
-  // it will then create that many shapes and connectors on the screen.
-
-  // This shows the HTML page in "ui.html".
-  figma.showUI(__html__);
-
-  // Calls to "parent.postMessage" from within the HTML page will trigger this
-  // callback. The callback will be passed the "pluginMessage" property of the
-  // posted message.
-  figma.ui.onmessage = (msg) => {
-    // One way of distinguishing between different types of messages sent from
-    // your HTML page is to use an object with a "type" property like this.
-    if (msg.type === 'create-shapes') {
-      // This plugin creates shapes and connectors on the screen.
-      const numberOfShapes = msg.count;
-
-      const nodes = [];
-      for (let i = 0; i < numberOfShapes; i++) {
-        const shape = figma.createShapeWithText();
-        // You can set shapeType to one of: 'SQUARE' | 'ELLIPSE' | 'ROUNDED_RECTANGLE' | 'DIAMOND' | 'TRIANGLE_UP' | 'TRIANGLE_DOWN' | 'PARALLELOGRAM_RIGHT' | 'PARALLELOGRAM_LEFT'
-        shape.shapeType = 'ROUNDED_RECTANGLE';
-        shape.x = i * (shape.width + 200);
-        shape.fills = [{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0 } }];
-        figma.currentPage.appendChild(shape);
-        nodes.push(shape);
-      }
-
-      for (let i = 0; i < numberOfShapes - 1; i++) {
-        const connector = figma.createConnector();
-        connector.strokeWeight = 8;
-
-        connector.connectorStart = {
-          endpointNodeId: nodes[i].id,
-          magnet: 'AUTO',
-        };
-
-        connector.connectorEnd = {
-          endpointNodeId: nodes[i + 1].id,
-          magnet: 'AUTO',
-        };
-      }
-
-      figma.currentPage.selection = nodes;
-      figma.viewport.scrollAndZoomIntoView(nodes);
-    }
-
-    // Make sure to close the plugin when you're done. Otherwise the plugin will
-    // keep running, which shows the cancel button at the bottom of the screen.
-    figma.closePlugin();
-  };
-}
-
-// Runs this code if the plugin is run in Slides
-if (figma.editorType === 'slides') {
-  // This plugin will open a window to prompt the user to enter a number, and
-  // it will then create that many slides on the screen.
-
-  // This shows the HTML page in "ui.html".
-  figma.showUI(__html__);
-
-  // Calls to "parent.postMessage" from within the HTML page will trigger this
-  // callback. The callback will be passed the "pluginMessage" property of the
-  // posted message.
-  figma.ui.onmessage = (msg) => {
-    // One way of distinguishing between different types of messages sent from
-    // your HTML page is to use an object with a "type" property like this.
-    if (msg.type === 'create-shapes') {
-      // This plugin creates slides and puts the user in grid view.
-      const numberOfSlides = msg.count;
-
-      const nodes = [];
-      for (let i = 0; i < numberOfSlides; i++) {
-        const slide = figma.createSlide();
-        nodes.push(slide);
-      }
-
-      figma.viewport.slidesView = 'grid';
-      figma.currentPage.selection = nodes;
-    }
-
-    // Make sure to close the plugin when you're done. Otherwise the plugin will
-    // keep running, which shows the cancel button at the bottom of the screen.
-    figma.closePlugin();
-  };
-}
-
-// Runs this code if the plugin is run in Buzz
-if (figma.editorType === 'buzz') {
-  // This plugin will open a window to prompt the user to enter a number, and
-  // it will then create that many frames on the screen.
-
-  // This shows the HTML page in "ui.html".
-  figma.showUI(__html__);
-
-  // Calls to "parent.postMessage" from within the HTML page will trigger this
-  // callback. The callback will be passed the "pluginMessage" property of the
-  // posted message.
-  figma.ui.onmessage = (msg) => {
-    // One way of distinguishing between different types of messages sent from
-    // your HTML page is to use an object with a "type" property like this.
-    if (msg.type === 'create-shapes') {
-      // This plugin creates frames and puts the user in grid view.
-      const numberOfFrames = msg.count;
-
-      const nodes = [];
-      for (let i = 0; i < numberOfFrames; i++) {
-        const frame = figma.buzz.createFrame();
-        nodes.push(frame);
-      }
-
-      figma.viewport.canvasView = 'grid';
-      figma.currentPage.selection = nodes;
-      figma.viewport.scrollAndZoomIntoView(nodes);
-    }
-
-    // Make sure to close the plugin when you're done. Otherwise the plugin will
-    // keep running, which shows the cancel button at the bottom of the screen.
-    figma.closePlugin();
-  };
+} else {
+  // Show message for other editor types
+  figma.notify('Este plugin solo funciona en Figma');
+  figma.closePlugin();
 }

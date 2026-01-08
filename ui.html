@@ -1,17 +1,399 @@
-<h2>Shape Creator</h2>
-<p>Count: <input id="count" type="number" value="5"></p>
-<button id="create">Create</button>
-<button id="cancel">Cancel</button>
-<script>
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-document.getElementById('create').onclick = () => {
-  const textbox = document.getElementById('count');
-  const count = parseInt(textbox.value, 10);
-  parent.postMessage({ pluginMessage: { type: 'create-shapes', count } }, '*')
-}
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 16px;
+      background: #ffffff;
+      color: #000000;
+    }
 
-document.getElementById('cancel').onclick = () => {
-  parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*')
-}
+    h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #000000;
+    }
 
-</script>
+    .section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666666;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .info-box {
+      background: #f5f5f5;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .info-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: #666666;
+    }
+
+    .info-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: #000000;
+    }
+
+    .gap-item {
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .gap-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .gap-item-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #000000;
+    }
+
+    .gap-item-value {
+      font-size: 13px;
+      color: #666666;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .gap-item-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #18a0fb;
+    }
+
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #18a0fb;
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: #0d8ce8;
+    }
+
+    .btn-primary:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #000000;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-link {
+      background: transparent;
+      color: #18a0fb;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    .btn-link:hover {
+      background: #f0f8ff;
+    }
+
+    .message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    .message-error {
+      background: #ffe5e5;
+      color: #d32f2f;
+      border: 1px solid #ffcdd2;
+    }
+
+    .message-success {
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #c8e6c9;
+    }
+
+    .message-info {
+      background: #e3f2fd;
+      color: #1976d2;
+      border: 1px solid #bbdefb;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: #666666;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .empty-state-text {
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .token-input-group {
+      margin-bottom: 16px;
+    }
+
+    .token-input-label {
+      font-size: 12px;
+      color: #666666;
+      margin-bottom: 4px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h2>Gap to Token</h2>
+
+  <div id="message-container"></div>
+
+  <div id="content">
+    <div class="empty-state">
+      <div class="empty-state-icon">📐</div>
+      <div class="empty-state-text">
+        Selecciona un Frame o AutoLayout<br>para escanear su gap
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentGapInfo = null;
+
+    // Token input group
+    const tokenInputGroup = `
+      <div class="token-input-group">
+        <label class="token-input-label">Nombre del Token</label>
+        <input type="text" id="token-name" placeholder="ej: spacing-md, gap-16" />
+      </div>
+    `;
+
+    function showMessage(text, type) {
+      const container = document.getElementById('message-container');
+      container.innerHTML = `<div class="message message-${type}">${text}</div>`;
+      setTimeout(() => {
+        container.innerHTML = '';
+      }, 5000);
+    }
+
+    function formatValue(value) {
+      if (value === null || value === undefined) {
+        return '—';
+      }
+      if (typeof value === 'number') {
+        return `${value}px`;
+      }
+      return String(value);
+    }
+
+    function createGapItem(label, value, gapType) {
+      if (value === null || value === undefined) {
+        return '';
+      }
+
+      return `
+        <div class="gap-item">
+          <div class="gap-item-header">
+            <span class="gap-item-label">${label}</span>
+            <span class="gap-item-value">${formatValue(value)}</span>
+          </div>
+          <div class="gap-item-actions">
+            ${tokenInputGroup}
+            <button class="btn-link btn-link-${gapType}" data-gap-type="${gapType}">
+              Vincular a Token
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderGapInfo(gapInfo) {
+      const content = document.getElementById('content');
+      
+      if (!gapInfo) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📐</div>
+            <div class="empty-state-text">
+              Selecciona un Frame o AutoLayout<br>para escanear su gap
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <div class="section">
+          <div class="info-box">
+            <div class="info-row">
+              <span class="info-label">Nombre</span>
+              <span class="info-value">${gapInfo.nodeName}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Tipo</span>
+              <span class="info-value">${gapInfo.nodeType}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">AutoLayout</span>
+              <span class="info-value">${gapInfo.hasAutoLayout ? 'Sí' : 'No'}</span>
+            </div>
+            ${gapInfo.layoutMode ? `
+              <div class="info-row">
+                <span class="info-label">Layout Mode</span>
+                <span class="info-value">${gapInfo.layoutMode}</span>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      // AutoLayout gaps
+      if (gapInfo.hasAutoLayout) {
+        html += `
+          <div class="section">
+            <div class="section-title">Gaps de AutoLayout</div>
+            ${createGapItem('Item Spacing', gapInfo.itemSpacing, 'itemSpacing')}
+            ${createGapItem('Counter Axis Spacing', gapInfo.counterAxisSpacing, 'counterAxisSpacing')}
+          </div>
+        `;
+      }
+
+      // Padding gaps
+      html += `
+        <div class="section">
+          <div class="section-title">Padding</div>
+          ${createGapItem('Top', gapInfo.paddingTop, 'paddingTop')}
+          ${createGapItem('Right', gapInfo.paddingRight, 'paddingRight')}
+          ${createGapItem('Bottom', gapInfo.paddingBottom, 'paddingBottom')}
+          ${createGapItem('Left', gapInfo.paddingLeft, 'paddingLeft')}
+        </div>
+      `;
+
+      html += `
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0;">
+          <button id="scan-btn" class="btn-secondary" style="width: 100%;">Re-escanear</button>
+        </div>
+      `;
+
+      content.innerHTML = html;
+
+      // Attach event listeners
+      document.querySelectorAll('.btn-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const gapType = btn.getAttribute('data-gap-type');
+          const gapItem = btn.closest('.gap-item');
+          const tokenInput = gapItem.querySelector('#token-name');
+          const tokenName = tokenInput.value.trim();
+
+          if (!tokenName) {
+            showMessage('Por favor, ingresa un nombre para el token', 'error');
+            return;
+          }
+
+          parent.postMessage({
+            pluginMessage: {
+              type: 'link-token',
+              nodeId: gapInfo.nodeId,
+              tokenName: tokenName,
+              gapType: gapType
+            }
+          }, '*');
+        });
+      });
+
+      document.getElementById('scan-btn').addEventListener('click', () => {
+        parent.postMessage({ pluginMessage: { type: 'scan' } }, '*');
+      });
+    }
+
+    // Listen for messages from plugin
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+
+      if (msg.type === 'scan-result') {
+        if (msg.data.success) {
+          currentGapInfo = msg.data.gapInfo;
+          renderGapInfo(currentGapInfo);
+        } else {
+          currentGapInfo = null;
+          renderGapInfo(null);
+          if (msg.data.message) {
+            showMessage(msg.data.message, 'info');
+          }
+        }
+      } else if (msg.type === 'link-result') {
+        if (msg.data.success) {
+          showMessage(msg.data.message, 'success');
+        } else {
+          showMessage(msg.data.message, 'error');
+        }
+      }
+    };
+  </script>
+</body>
+</html>
