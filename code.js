@@ -208,8 +208,6 @@ async function getVariableValueForActiveMode(variable) {
           activeModeId = collection.modes[0].modeId;
         }
         
-        figma.notify('DEBUG getVariableValueForActiveMode: Usando modo ' + activeModeId + ' para leer');
-        
         // If we have an active mode, get the value for that mode
         if (activeModeId) {
           // Try getValueForMode first (most reliable)
@@ -217,11 +215,10 @@ async function getVariableValueForActiveMode(variable) {
             try {
               const value = variable.getValueForMode(activeModeId);
               if (typeof value === 'number' && !isNaN(value)) {
-                figma.notify('DEBUG getVariableValueForActiveMode: Valor leído con getValueForMode: ' + value);
                 return value;
               }
             } catch (e) {
-              figma.notify('DEBUG getVariableValueForActiveMode: Error en getValueForMode: ' + e.message);
+              // Error reading value, continue to fallback
             }
           }
           
@@ -229,22 +226,17 @@ async function getVariableValueForActiveMode(variable) {
           if (variable.valuesByMode && variable.valuesByMode[activeModeId] !== undefined) {
             const value = variable.valuesByMode[activeModeId];
             if (typeof value === 'number' && !isNaN(value)) {
-              figma.notify('DEBUG getVariableValueForActiveMode: Valor leído con valuesByMode: ' + value);
               return value;
             }
           }
-          
-          figma.notify('DEBUG getVariableValueForActiveMode: No se pudo leer valor del modo ' + activeModeId);
         }
       }
     }
     
     // Fallback to default mode if active mode not found
-    figma.notify('DEBUG getVariableValueForActiveMode: Usando fallback getVariableValue');
     return getVariableValue(variable);
   } catch (e) {
     // Error getting active mode value, fallback to default
-    figma.notify('DEBUG getVariableValueForActiveMode: Error: ' + e.message);
     return getVariableValue(variable);
   }
 }
@@ -434,9 +426,6 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
       variable = variables.find(v => v.name === tokenName);
 
       if (!variable) {
-        // DEBUG: Log the received tokenValue
-        figma.notify('DEBUG: tokenValue recibido: ' + JSON.stringify(tokenValue) + ' (tipo: ' + typeof tokenValue + ')');
-        
         // Determine the value to use: provided value or current gap value
         // tokenValue comes from the UI input field "Gap"
         // tokenValue should be a valid number (can be 0 or positive)
@@ -461,11 +450,9 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
         if (numericTokenValue !== null && numericTokenValue !== undefined && typeof numericTokenValue === 'number' && !isNaN(numericTokenValue) && isFinite(numericTokenValue)) {
           // Use the value from the input field (this is the Gap value)
           gapValue = numericTokenValue;
-          figma.notify('DEBUG: gapValue asignado desde tokenValue: ' + gapValue + ' (tipo: ' + typeof gapValue + ')');
         } else {
           // Fallback to current itemSpacing only if tokenValue is truly invalid
           gapValue = (node.itemSpacing !== null && node.itemSpacing !== undefined) ? node.itemSpacing : 0;
-          figma.notify('DEBUG: gapValue asignado desde itemSpacing (fallback): ' + gapValue + ' porque tokenValue no era válido: ' + JSON.stringify(tokenValue));
         }
 
         // Validate token name
@@ -528,9 +515,6 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
             // Clear cache after creating variable in collection
             variableCollectionsCache = null;
             
-            // Debug: Check if modes are available immediately
-            figma.notify('DEBUG: Variable creada. Variable modes: ' + (variable.modes ? variable.modes.length : 'null') + ', Collection modes: ' + (collectionNode.modes ? collectionNode.modes.length : 'null'));
-            
             // IMPORTANT: Use collection's modes directly since variable.modes might not be immediately available
             // after creating the variable. The variable inherits the collection's modes, so we can use collection's mode IDs
             if (collectionNode && collectionNode.modes && collectionNode.modes.length > 0) {
@@ -545,15 +529,12 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
                 modeIdToUse = collectionNode.modes[0].modeId;
               }
               
-              figma.notify('DEBUG: Usando modo de colección para establecer: ' + modeIdToUse + ' (gapValue=' + gapValue + ')');
-              
               // Set the value in the determined mode
               // The gapValue comes from the user input in the campo "Gap"
               // Verify gapValue is valid before setting
               if (gapValue !== null && gapValue !== undefined && typeof gapValue === 'number' && !isNaN(gapValue) && isFinite(gapValue) && modeIdToUse) {
                 // Set value in the primary mode using the mode ID from the collection
                 variable.setValueForMode(modeIdToUse, gapValue);
-                figma.notify('DEBUG: Valor ' + gapValue + ' establecido en modo ' + modeIdToUse + ' usando setValueForMode');
                 
                 // Verify the value was set correctly immediately after setting
                 try {
@@ -563,11 +544,9 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
                   } else if (variable.valuesByMode && variable.valuesByMode[modeIdToUse] !== undefined) {
                     verifyValue = variable.valuesByMode[modeIdToUse];
                   }
-                  figma.notify('DEBUG: Valor verificado inmediatamente después: ' + JSON.stringify(verifyValue) + ' (esperado: ' + gapValue + ')');
                   
                   // If value is still 0 or null (and gapValue is not 0), try setting again
                   if ((verifyValue === null || verifyValue === undefined || verifyValue === 0) && gapValue !== 0) {
-                    figma.notify('DEBUG: Valor no se estableció correctamente, reintentando en todos los modos...');
                     // Set value in all collection modes as fallback
                     for (let i = 0; i < collectionNode.modes.length; i++) {
                       const collectionModeId = collectionNode.modes[i].modeId;
@@ -577,7 +556,6 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
                     }
                   }
                 } catch (e) {
-                  figma.notify('DEBUG: Error al verificar valor: ' + e.message + '. Estableciendo en todos los modos...');
                   // Set value in all collection modes as fallback
                   for (let i = 0; i < collectionNode.modes.length; i++) {
                     const collectionModeId = collectionNode.modes[i].modeId;
@@ -594,34 +572,17 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
                     variable.setValueForMode(otherModeId, gapValue);
                   }
                 }
-                figma.notify('DEBUG: Valor ' + gapValue + ' establecido en todos los ' + collectionNode.modes.length + ' modos de la colección');
-              } else {
-                figma.notify('DEBUG: ERROR - No se pudo establecer. gapValue=' + JSON.stringify(gapValue) + ' (tipo: ' + typeof gapValue + '), modeIdToUse=' + modeIdToUse);
               }
-            } else {
-              figma.notify('DEBUG: ERROR - La colección no tiene modos. Collection: ' + (collectionNode ? 'existe' : 'null') + ', Modes: ' + (collectionNode && collectionNode.modes ? collectionNode.modes.length : 'null'));
             }
           } else {
             // No collection specified, create variable without collection
             variable = figma.variables.createVariable(tokenName.trim(), 'FLOAT');
-            figma.notify('DEBUG: Variable creada sin colección. gapValue=' + gapValue);
             
             // Use variable's default mode
             // Ensure gapValue is a valid number before setting it
             if (variable.modes && variable.modes.length > 0 && gapValue !== null && gapValue !== undefined && typeof gapValue === 'number' && !isNaN(gapValue) && isFinite(gapValue)) {
               const modeId = variable.modes[0].modeId;
-              figma.notify('DEBUG: Estableciendo valor ' + gapValue + ' en modo ' + modeId + ' (sin colección)');
               variable.setValueForMode(modeId, gapValue);
-              
-              // Verify the value
-              try {
-                const verifyValue = variable.getValueForMode ? variable.getValueForMode(modeId) : (variable.valuesByMode && variable.valuesByMode[modeId]);
-                figma.notify('DEBUG: Valor verificado (sin colección): ' + JSON.stringify(verifyValue));
-              } catch (e) {
-                figma.notify('DEBUG: Error al verificar valor (sin colección): ' + e.message);
-              }
-            } else {
-              figma.notify('DEBUG: ERROR - gapValue inválido para variable sin colección: ' + JSON.stringify(gapValue));
             }
           }
         } catch (createError) {
@@ -649,47 +610,35 @@ async function linkGapToToken(nodeId, tokenName, gapType, tokenId, tokenValue, c
       // Try to get value from the variable using the active mode
       let tokenValue = null;
       
-      figma.notify('DEBUG: Leyendo valor de variable ' + variable.name);
-      
       // Try getVariableValueForActiveMode first (more reliable for collection variables)
       if (variable.variableCollectionId) {
         try {
           tokenValue = await getVariableValueForActiveMode(variable);
-          figma.notify('DEBUG: Valor leído con getVariableValueForActiveMode: ' + JSON.stringify(tokenValue));
         } catch (e) {
-          figma.notify('DEBUG: Error en getVariableValueForActiveMode: ' + e.message);
           // Fallback to getVariableValue if getVariableValueForActiveMode fails
           tokenValue = getVariableValue(variable);
-          figma.notify('DEBUG: Valor leído con getVariableValue (fallback): ' + JSON.stringify(tokenValue));
         }
       } else {
         // For variables without collection, use standard method
         tokenValue = getVariableValue(variable);
-        figma.notify('DEBUG: Valor leído con getVariableValue (sin colección): ' + JSON.stringify(tokenValue));
       }
       
       // If we still don't have a value, try to get it from the first mode
       if (tokenValue === null || tokenValue === undefined) {
-        figma.notify('DEBUG: Valor es null/undefined, intentando leer desde primer modo');
         if (variable.modes && variable.modes.length > 0) {
           const firstModeId = variable.modes[0].modeId;
-          figma.notify('DEBUG: Primer modo ID: ' + firstModeId);
           if (variable.getValueForMode) {
             try {
               tokenValue = variable.getValueForMode(firstModeId);
-              figma.notify('DEBUG: Valor desde getValueForMode: ' + JSON.stringify(tokenValue));
             } catch (e) {
-              figma.notify('DEBUG: Error en getValueForMode: ' + e.message);
+              // Error reading value
             }
           }
           if ((tokenValue === null || tokenValue === undefined) && variable.valuesByMode) {
             tokenValue = variable.valuesByMode[firstModeId];
-            figma.notify('DEBUG: Valor desde valuesByMode: ' + JSON.stringify(tokenValue));
           }
         }
       }
-      
-      figma.notify('DEBUG: Valor final que se retorna: ' + JSON.stringify(tokenValue));
 
       return {
         success: true,
