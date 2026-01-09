@@ -939,9 +939,13 @@
 
       let tableRows = '';
       tokens.forEach(token => {
-        const formattedValue = token.value !== null && token.value !== undefined
-          ? (Number.isInteger(token.value) ? String(token.value) : token.value.toFixed(1))
-          : '—';
+        // Format value correctly - show value with px if available, otherwise show "—"
+        let formattedValue = '—';
+        if (token.value !== null && token.value !== undefined && !isNaN(token.value)) {
+          formattedValue = Number.isInteger(token.value) 
+            ? `${token.value}px` 
+            : `${token.value.toFixed(1)}px`;
+        }
         
         tableRows += `
           <tr data-token-id="${token.id}" data-token-name="${token.name}">
@@ -949,7 +953,7 @@
               <input type="radio" name="token-select-${gapType}" class="token-radio" value="${token.id}" />
             </td>
             <td class="token-name-cell">${token.name}</td>
-            <td class="token-value-cell">${formattedValue}px</td>
+            <td class="token-value-cell">${formattedValue}</td>
           </tr>
         `;
       });
@@ -987,8 +991,8 @@
       `;
     }
 
-    function createNewVariableModal(gapType, collections, currentGapValue) {
-      let collectionOptions = '<option value="">— Sin colección —</option>';
+      function createNewVariableModal(gapType, collections, currentGapValue) {
+      let collectionOptions = '<option value="">Selecciona una colección…</option>';
       if (collections && collections.length > 0) {
         collections.forEach(collection => {
           collectionOptions += `<option value="${collection.id}">${collection.name}</option>`;
@@ -1004,6 +1008,16 @@
             </div>
             <div class="modal-body">
               <form id="create-variable-form-${gapType}">
+                <!-- 1. Colección (obligatorio) -->
+                <div class="form-group">
+                  <label class="form-label form-label-required" for="new-token-collection-${gapType}">Colección</label>
+                  <select id="new-token-collection-${gapType}" required>
+                    ${collectionOptions}
+                  </select>
+                  <div class="form-help">Selecciona en qué colección quieres crear el token</div>
+                </div>
+
+                <!-- 2. Nombre de la variable (obligatorio) -->
                 <div class="form-group">
                   <label class="form-label form-label-required" for="new-token-name-${gapType}">Nombre de la Variable</label>
                   <input 
@@ -1012,17 +1026,12 @@
                     placeholder="spacing-md, gap-16..." 
                     required
                   />
-                  <div class="form-help">El nombre debe ser único en tu librería de variables</div>
+                  <div class="form-help">Nombre del token (name de la variable en la tabla de variables)</div>
                 </div>
+
+                <!-- 3. Gap (valor float de la variable) -->
                 <div class="form-group">
-                  <label class="form-label" for="new-token-collection-${gapType}">Colección</label>
-                  <select id="new-token-collection-${gapType}">
-                    ${collectionOptions}
-                  </select>
-                  <div class="form-help">Selecciona una colección para organizar la variable (opcional)</div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label form-label-required" for="new-token-value-${gapType}">Valor (px)</label>
+                  <label class="form-label form-label-required" for="new-token-value-${gapType}">Gap</label>
                   <input 
                     type="number" 
                     id="new-token-value-${gapType}" 
@@ -1032,7 +1041,7 @@
                     min="0" 
                     required
                   />
-                  <div class="form-help">Valor numérico del token en píxeles</div>
+                  <div class="form-help">Valor float de la variable (corresponde al campo "float" de la variable en la tabla de variables)</div>
                 </div>
               </form>
             </div>
@@ -1291,16 +1300,25 @@
           const collectionSelect = document.getElementById('new-token-collection-' + gapType);
           
           const tokenName = tokenNameInput ? tokenNameInput.value.trim() : '';
-          const tokenValue = tokenValueInput ? parseFloat(tokenValueInput.value) : null;
+          const tokenValueRaw = tokenValueInput ? tokenValueInput.value.trim() : '';
           const collectionId = collectionSelect ? collectionSelect.value : null;
+          
+          // Parse Gap value to number
+          let tokenValue = null;
+          if (tokenValueRaw && tokenValueRaw !== '') {
+            const parsed = parseFloat(tokenValueRaw);
+            if (!isNaN(parsed) && isFinite(parsed) && parsed >= 0) {
+              tokenValue = parsed;
+            }
+          }
           
           if (!tokenName) {
             showMessage('Por favor, ingresa un nombre para la variable', 'error');
             return;
           }
           
-          if (isNaN(tokenValue) || tokenValue === null) {
-            showMessage('Por favor, ingresa un valor válido para la variable', 'error');
+          if (tokenValue === null || tokenValue === undefined || isNaN(tokenValue)) {
+            showMessage('Por favor, ingresa un valor válido para la variable (debe ser un número mayor o igual a 0)', 'error');
             return;
           }
           
@@ -1398,12 +1416,6 @@
         `;
       }
 
-      html += `
-        <div class="actions-footer">
-          <button class="btn-secondary" id="scan-btn">Re-escanear</button>
-        </div>
-      `;
-
       content.innerHTML = html;
 
       // Append modals to body if gap is not bound
@@ -1439,13 +1451,6 @@
           openModal('create-new-modal-' + gapType);
         });
       });
-
-      const scanBtn = document.getElementById('scan-btn');
-      if (scanBtn) {
-        scanBtn.addEventListener('click', () => {
-          parent.postMessage({ pluginMessage: { type: 'scan' } }, '*');
-        });
-      }
     }
 
     // Handle modal close on overlay click
