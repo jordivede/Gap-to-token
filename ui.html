@@ -171,10 +171,12 @@
     .info-pair {
       flex: 1 1 48%;
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
       font-size: 11px;
       padding: 2px 0;
+      gap: 16px;
+      min-width: 0;
     }
 
     .info-label {
@@ -237,6 +239,12 @@
       border-color: var(--color-primary);
       color: #ffffff;
       font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex-shrink: 1;
+      min-width: 0;
     }
 
     .gap-list {
@@ -1187,7 +1195,7 @@
         ? ` <span style="color: var(--color-text-secondary); font-weight: normal;">(${formatValue(tokenValue)})</span>`
         : '';
 
-      return `
+      const cardHtml = `
         <div class="gap-item ${boundClass}">
           <div class="gap-item-header">
             <span class="gap-item-label">
@@ -1235,6 +1243,16 @@
           </div>
         </div>
       `;
+
+      const buttonHtml = isBound ? `
+        <div style="margin-top: 12px;">
+          <button class="btn-secondary" id="relink-token-btn-${gapType}" style="width: 100%;">
+            Revincular
+          </button>
+        </div>
+      ` : '';
+
+      return cardHtml + buttonHtml;
     }
 
     function setupModalListeners(gapType) {
@@ -1389,7 +1407,7 @@
               <div class="info-pair">
                 <span class="info-label">Token</span>
                 ${gapInfo.itemSpacingToken ? `
-                  <span class="badge badge-token">${gapInfo.itemSpacingToken}</span>
+                  <span class="badge badge-token">${gapInfo.itemSpacingTokenFullPath || gapInfo.itemSpacingToken}</span>
                 ` : `
                   <span class="info-muted">—</span>
                 `}
@@ -1418,24 +1436,21 @@
 
       content.innerHTML = html;
 
-      // Append modals to body if gap is not bound
-      const gapItem = document.querySelector('.gap-item');
-      if (gapItem && !gapItem.classList.contains('gap-item-bound')) {
-        // Remove existing modals first
-        const existingLinkModal = document.getElementById('link-existing-modal-itemSpacing');
-        const existingCreateModal = document.getElementById('create-new-modal-itemSpacing');
-        if (existingLinkModal) existingLinkModal.remove();
-        if (existingCreateModal) existingCreateModal.remove();
-        
-        // Add new modals
-        const linkModal = createLinkExistingModal('itemSpacing', availableTokens, gapInfo.itemSpacing);
-        const createModal = createNewVariableModal('itemSpacing', availableCollections, gapInfo.itemSpacing);
-        document.body.insertAdjacentHTML('beforeend', linkModal);
-        document.body.insertAdjacentHTML('beforeend', createModal);
+      // Append modals to body (always, whether bound or not)
+      // Remove existing modals first
+      const existingLinkModal = document.getElementById('link-existing-modal-itemSpacing');
+      const existingCreateModal = document.getElementById('create-new-modal-itemSpacing');
+      if (existingLinkModal) existingLinkModal.remove();
+      if (existingCreateModal) existingCreateModal.remove();
+      
+      // Add new modals
+      const linkModal = createLinkExistingModal('itemSpacing', availableTokens, gapInfo.itemSpacing);
+      const createModal = createNewVariableModal('itemSpacing', availableCollections, gapInfo.itemSpacing);
+      document.body.insertAdjacentHTML('beforeend', linkModal);
+      document.body.insertAdjacentHTML('beforeend', createModal);
 
-        // Set up modal event listeners
-        setupModalListeners('itemSpacing');
-      }
+      // Set up modal event listeners
+      setupModalListeners('itemSpacing');
       
       // Handle link existing and create new buttons
       document.querySelectorAll('button[id^="link-existing-btn-"]').forEach(btn => {
@@ -1449,6 +1464,14 @@
         btn.addEventListener('click', () => {
           const gapType = btn.id.replace('create-new-btn-', '');
           openModal('create-new-modal-' + gapType);
+        });
+      });
+
+      // Handle relink token button (for bound gaps)
+      document.querySelectorAll('button[id^="relink-token-btn-"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const gapType = btn.id.replace('relink-token-btn-', '');
+          openModal('link-existing-modal-' + gapType);
         });
       });
     }
