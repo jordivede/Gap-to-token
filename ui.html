@@ -133,16 +133,48 @@
       margin-bottom: var(--spacing-lg);
     }
 
-    .info-row {
+    .info-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--spacing-md);
+      margin-bottom: var(--spacing-md);
+    }
+
+    .info-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--color-text);
+      line-height: 1.3;
+    }
+
+    .info-subtitle {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .info-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-xs);
+      justify-content: flex-end;
+    }
+
+    .info-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      margin-top: var(--spacing-sm);
+    }
+
+    .info-pair {
+      flex: 1 1 48%;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--spacing-sm) 0;
-      font-size: 12px;
-    }
-
-    .info-row:not(:last-child) {
-      border-bottom: 1px solid var(--color-border);
+      font-size: 11px;
+      padding: 2px 0;
     }
 
     .info-label {
@@ -150,11 +182,61 @@
       font-weight: 500;
     }
 
-    .info-value {
-      color: var(--color-text);
-      font-weight: 600;
-      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+    .info-muted {
+      color: var(--color-text-tertiary);
       font-size: 11px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge-tag {
+      background: var(--color-surface);
+      border-color: var(--color-border);
+      color: var(--color-text-secondary);
+    }
+
+    .badge-outline {
+      background: transparent;
+      border-color: var(--color-border);
+      color: var(--color-text-secondary);
+    }
+
+    .badge-success {
+      background: var(--color-success-bg);
+      border-color: rgba(0, 168, 107, 0.4);
+      color: var(--color-success);
+    }
+
+    .badge-warning {
+      background: var(--color-info-bg);
+      border-color: rgba(0, 102, 255, 0.3);
+      color: var(--color-info);
+    }
+
+    .badge-value {
+      background: var(--color-bg);
+      border-color: var(--color-border);
+      color: var(--color-text);
+      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+    }
+
+    .badge-token {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #ffffff;
+      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
     }
 
     .gap-list {
@@ -383,8 +465,8 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Gap to Token</h1>
-      <p>Vincula gaps y espaciados a tokens de diseño</p>
+      <h1>GAP Audit & Token Manager</h1>
+      <p>Audita y gestiona el valor GAP (itemSpacing) de tus AutoLayouts</p>
     </div>
 
     <div id="message-container"></div>
@@ -393,7 +475,7 @@
       <div class="empty-state">
         <div class="empty-state-icon">📐</div>
         <div class="empty-state-text">
-          Selecciona un Frame o AutoLayout<br>para escanear sus gaps
+          Selecciona un Frame o AutoLayout<br>para auditar su GAP (itemSpacing)
         </div>
       </div>
     </div>
@@ -403,17 +485,22 @@
     let currentGapInfo = null;
     let availableTokens = [];
 
-    function createTokenSelector(gapType, tokens) {
+    function createTokenSelector(gapType, tokens, currentGapValue) {
       if (!tokens || tokens.length === 0) {
         return `
           <div class="token-input-group">
             <label class="token-input-label">Nombre del Token</label>
             <input type="text" id="token-name-${gapType}" placeholder="spacing-md, gap-16..." />
+            <label class="token-input-label" style="margin-top: 8px;">Valor del Token (px)</label>
+            <input type="number" id="token-value-${gapType}" placeholder="${currentGapValue || 0}" value="${currentGapValue || ''}" step="0.1" min="0" />
           </div>
+          <button class="btn-primary" id="create-token-btn-${gapType}" style="margin-top: 12px; width: 100%;">
+            Crear y Vincular Token
+          </button>
         `;
       }
 
-      let options = '<option value="">— Seleccionar token —</option>';
+      let options = '<option value="">— Seleccionar token de la librería —</option>';
       tokens.forEach(token => {
         let displayText = token.name;
         if (token.value !== null && token.value !== undefined) {
@@ -430,7 +517,7 @@
 
       return `
         <div class="token-selector-group">
-          <label class="token-selector-label">Vincular a Token</label>
+          <label class="token-selector-label">Vincular a Token Existente</label>
           <select id="token-select-${gapType}" class="token-selector" data-gap-type="${gapType}">
             ${options}
           </select>
@@ -438,6 +525,11 @@
         <div class="token-input-group" id="new-token-group-${gapType}" style="display: none;">
           <label class="token-input-label">Nombre del Nuevo Token</label>
           <input type="text" id="token-name-${gapType}" placeholder="spacing-md, gap-16..." />
+          <label class="token-input-label" style="margin-top: 8px;">Valor del Token (px)</label>
+          <input type="number" id="token-value-${gapType}" placeholder="${currentGapValue || 0}" value="${currentGapValue || ''}" step="0.1" min="0" />
+          <button class="btn-primary" id="create-token-btn-${gapType}" style="margin-top: 12px; width: 100%;">
+            Crear y Vincular Token
+          </button>
         </div>
       `;
     }
@@ -456,12 +548,21 @@
       return String(value);
     }
 
-    function createGapItem(label, value, gapType, tokenName) {
+    function createGapItem(label, value, gapType, tokenName, tokenValue, tokenFullPath) {
       if (value === null || value === undefined) return '';
 
-      const isBound = tokenName !== null && tokenName !== undefined;
+      // Better check for bound token: check for truthy string value
+      const isBound = tokenName !== null && tokenName !== undefined && String(tokenName).trim() !== '';
       const boundClass = isBound ? 'gap-item-bound' : '';
-      const tokenBadge = isBound ? `<span class="token-badge">${tokenName}</span>` : '';
+      
+      // Use full path if available, otherwise use token name
+      const displayName = (tokenFullPath && tokenFullPath.trim() !== '') ? tokenFullPath : tokenName;
+      const tokenBadge = isBound ? `<span class="token-badge">${displayName}</span>` : '';
+      
+      // Show token value if available
+      const tokenValueDisplay = isBound && tokenValue !== null && tokenValue !== undefined
+        ? ` <span style="color: var(--color-text-secondary); font-weight: normal;">(${formatValue(tokenValue)})</span>`
+        : '';
 
       return `
         <div class="gap-item ${boundClass}">
@@ -475,9 +576,26 @@
           <div class="gap-item-actions">
             ${isBound ? `
               <div class="bound-status">
-                ✓ Vinculado al token: <strong>${tokenName}</strong>
+                <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                  <span style="font-size: 16px; margin-top: 2px;">✓</span>
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; margin-bottom: 4px; color: var(--color-success);">Token vinculado:</div>
+                    <div style="font-size: 12px; font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; word-break: break-all; line-height: 1.4;">
+                      <strong>${displayName}</strong>${tokenValueDisplay}
+                    </div>
+                  </div>
+                </div>
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0, 168, 107, 0.2); font-size: 11px; color: var(--color-text-secondary);">
+                  <div style="margin-bottom: 4px;">Valor del token: <strong>${formatValue(tokenValue !== null && tokenValue !== undefined ? tokenValue : 'N/A')}</strong></div>
+                  <div>GAP actual aplicado: <strong>${formatValue(value)}</strong></div>
+                </div>
               </div>
-            ` : createTokenSelector(gapType, availableTokens)}
+            ` : `
+              <div style="margin-bottom: 12px; padding: 12px; background: var(--color-info-bg); border-radius: var(--radius-sm); font-size: 11px; color: var(--color-info);">
+                ⚠️ GAP no está tokenizado. Valor actual: <strong>${formatValue(value)}</strong>
+              </div>
+              ${createTokenSelector(gapType, availableTokens, value)}
+            `}
           </div>
         </div>
       `;
@@ -491,7 +609,7 @@
           <div class="empty-state">
             <div class="empty-state-icon">📐</div>
             <div class="empty-state-text">
-              Selecciona un Frame o AutoLayout<br>para escanear sus gaps
+              Selecciona un Frame o AutoLayout<br>para auditar su GAP (itemSpacing)
             </div>
           </div>
         `;
@@ -501,24 +619,47 @@
       let html = `
         <div class="section">
           <div class="info-card">
-            <div class="info-row">
-              <span class="info-label">Nombre</span>
-              <span class="info-value">${gapInfo.nodeName}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Tipo</span>
-              <span class="info-value">${gapInfo.nodeType}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">AutoLayout</span>
-              <span class="info-value">${gapInfo.hasAutoLayout ? 'Sí' : 'No'}</span>
-            </div>
-            ${gapInfo.layoutMode ? `
-              <div class="info-row">
-                <span class="info-label">Layout</span>
-                <span class="info-value">${gapInfo.layoutMode}</span>
+            <div class="info-card-header">
+              <div>
+                <div class="info-title">${gapInfo.nodeName}</div>
+                <div class="info-subtitle">ID: ${gapInfo.nodeId}</div>
               </div>
-            ` : ''}
+              <div class="info-tags">
+                <span class="badge badge-tag">${gapInfo.nodeType}</span>
+                ${gapInfo.layoutMode ? `<span class="badge badge-outline">${gapInfo.layoutMode}</span>` : ''}
+                <span class="badge ${gapInfo.hasAutoLayout ? 'badge-success' : 'badge-warning'}">
+                  ${gapInfo.hasAutoLayout ? 'AutoLayout activo' : 'Sin AutoLayout'}
+                </span>
+              </div>
+            </div>
+            <div class="info-grid">
+              <div class="info-pair">
+                <span class="info-label">GAP actual</span>
+                <span class="badge badge-value">${formatValue(gapInfo.itemSpacing)}</span>
+              </div>
+              <div class="info-pair">
+                <span class="info-label">Estado</span>
+                ${gapInfo.itemSpacingToken ? `
+                  <span class="badge badge-success">Tokenizado</span>
+                ` : `
+                  <span class="badge badge-warning">Sin token</span>
+                `}
+              </div>
+              <div class="info-pair">
+                <span class="info-label">Token</span>
+                ${gapInfo.itemSpacingToken ? `
+                  <span class="badge badge-token">${gapInfo.itemSpacingToken}</span>
+                ` : `
+                  <span class="info-muted">—</span>
+                `}
+              </div>
+              ${gapInfo.itemSpacingTokenValue !== null && gapInfo.itemSpacingTokenValue !== undefined ? `
+                <div class="info-pair">
+                  <span class="info-label">Valor del token</span>
+                  <span class="badge badge-value">${formatValue(gapInfo.itemSpacingTokenValue)}</span>
+                </div>
+              ` : ''}
+            </div>
           </div>
         </div>
       `;
@@ -526,9 +667,9 @@
       if (gapInfo.hasAutoLayout) {
         html += `
           <div class="section">
-            <div class="section-title">Item Spacing</div>
+            <div class="section-title">GAP (Item Spacing)</div>
             <div class="gap-list">
-              ${createGapItem('Item Spacing', gapInfo.itemSpacing, 'itemSpacing', gapInfo.itemSpacingToken)}
+              ${createGapItem('GAP', gapInfo.itemSpacing, 'itemSpacing', gapInfo.itemSpacingToken, gapInfo.itemSpacingTokenValue, gapInfo.itemSpacingTokenFullPath)}
             </div>
           </div>
         `;
@@ -568,30 +709,50 @@
                 nodeId: currentGapInfo.nodeId,
                 tokenName: tokenName,
                 tokenId: tokenId,
-                gapType: gapType
+                gapType: gapType,
+                tokenValue: null
               }
             }, '*');
           }
         });
       });
       
-      // Handle new token creation (when input is used)
+      // Handle create token buttons
+      document.querySelectorAll('button[id^="create-token-btn-"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const gapType = btn.id.replace('create-token-btn-', '');
+          const tokenNameInput = document.getElementById('token-name-' + gapType);
+          const tokenValueInput = document.getElementById('token-value-' + gapType);
+          
+          const tokenName = tokenNameInput ? tokenNameInput.value.trim() : '';
+          const tokenValue = tokenValueInput ? parseFloat(tokenValueInput.value) : null;
+          
+          if (!tokenName) {
+            showMessage('Por favor, ingresa un nombre para el token', 'error');
+            return;
+          }
+          
+          parent.postMessage({
+            pluginMessage: {
+              type: 'link-token',
+              nodeId: currentGapInfo.nodeId,
+              tokenName: tokenName,
+              tokenId: null,
+              gapType: gapType,
+              tokenValue: isNaN(tokenValue) ? null : tokenValue
+            }
+          }, '*');
+        });
+      });
+      
+      // Handle Enter key in token name input for creating new tokens
       document.querySelectorAll('input[id^="token-name-"]').forEach(input => {
         input.addEventListener('keypress', (e) => {
           if (e.key === 'Enter') {
             const gapType = input.id.replace('token-name-', '');
-            const tokenName = input.value.trim();
-            
-            if (tokenName) {
-              parent.postMessage({
-                pluginMessage: {
-                  type: 'link-token',
-                  nodeId: currentGapInfo.nodeId,
-                  tokenName: tokenName,
-                  tokenId: null,
-                  gapType: gapType
-                }
-              }, '*');
+            const createBtn = document.getElementById('create-token-btn-' + gapType);
+            if (createBtn) {
+              createBtn.click();
             }
           }
         });
@@ -613,6 +774,17 @@
         if (msg.data.success) {
           currentGapInfo = msg.data.gapInfo;
           availableTokens = msg.data.availableTokens || [];
+          
+          // Debug: Log gap info to console
+          console.log('Gap Info received:', {
+            itemSpacing: currentGapInfo.itemSpacing,
+            itemSpacingToken: currentGapInfo.itemSpacingToken,
+            itemSpacingTokenValue: currentGapInfo.itemSpacingTokenValue,
+            itemSpacingTokenFullPath: currentGapInfo.itemSpacingTokenFullPath,
+            itemSpacingTokenCollectionPath: currentGapInfo.itemSpacingTokenCollectionPath,
+            hasAutoLayout: currentGapInfo.hasAutoLayout
+          });
+          
           renderGapInfo(currentGapInfo);
         } else {
           currentGapInfo = null;
