@@ -304,10 +304,21 @@ async function getAvailableTokens() {
       // Only add if value is a valid number
       const numericValue = (value !== null && value !== undefined && typeof value === 'number' && !isNaN(value)) ? value : null;
       
+      // Get collection name for this variable
+      let collectionName = null;
+      if (v.variableCollectionId) {
+        const collection = collections.find(c => c.id === v.variableCollectionId);
+        if (collection) {
+          collectionName = collection.name || null;
+        }
+      }
+      
       tokens.push({
         id: v.id,
         name: v.name,
-        value: numericValue
+        value: numericValue,
+        collectionId: v.variableCollectionId || null,
+        collectionName: collectionName
       });
     }
     

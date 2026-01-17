@@ -1213,7 +1213,7 @@
     let availableTokens = [];
     let availableCollections = [];
 
-    function createLinkExistingModal(gapType, tokens, currentGapValue) {
+    function createLinkExistingModal(gapType, tokens, currentGapValue, collections) {
       if (!tokens || tokens.length === 0) {
         return `
           <div class="modal-overlay" id="link-existing-modal-${gapType}">
@@ -1235,6 +1235,33 @@
         `;
       }
 
+      // Check if we have more than one collection
+      const uniqueCollections = new Set();
+      tokens.forEach(token => {
+        if (token.collectionId) {
+          uniqueCollections.add(token.collectionId);
+        }
+      });
+      const hasMultipleCollections = uniqueCollections.size > 1;
+
+      // Build collection selector if needed
+      let collectionSelector = '';
+      if (hasMultipleCollections && collections && collections.length > 1) {
+        let collectionOptions = '<option value="">Todas las colecciones</option>';
+        collections.forEach(collection => {
+          collectionOptions += `<option value="${collection.id}">${collection.name}</option>`;
+        });
+        
+        collectionSelector = `
+          <div class="form-group" style="margin-bottom: var(--spacing-lg);">
+            <label class="form-label" for="collection-filter-${gapType}">Filtrar por colección</label>
+            <select id="collection-filter-${gapType}">
+              ${collectionOptions}
+            </select>
+          </div>
+        `;
+      }
+
       let tableRows = '';
       tokens.forEach(token => {
         // Format value correctly - show value with px if available, otherwise show "—"
@@ -1245,8 +1272,10 @@
             : `${token.value.toFixed(1)}px`;
         }
         
+        const collectionIdAttr = token.collectionId ? `data-collection-id="${token.collectionId}"` : '';
+        
         tableRows += `
-          <tr data-token-id="${token.id}" data-token-name="${token.name}">
+          <tr data-token-id="${token.id}" data-token-name="${token.name}" ${collectionIdAttr}>
             <td class="token-select-cell">
               <input type="radio" name="token-select-${gapType}" class="token-radio" value="${token.id}" />
             </td>
@@ -1267,7 +1296,8 @@
               <p style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 16px;">
                 Selecciona una variable de la lista para vincular el GAP actual (${formatValue(currentGapValue)}).
               </p>
-              <table class="tokens-table">
+              ${collectionSelector}
+              <table class="tokens-table" id="tokens-table-${gapType}">
                 <thead>
                   <tr>
                     <th style="width: 40px;"></th>
@@ -1530,6 +1560,45 @@
     }
 
     function setupModalListeners(gapType) {
+      // Handle collection filter change
+      const collectionFilter = document.getElementById('collection-filter-' + gapType);
+      if (collectionFilter) {
+        collectionFilter.addEventListener('change', () => {
+          const selectedCollectionId = collectionFilter.value;
+          const table = document.querySelector('#link-existing-modal-' + gapType + ' .tokens-table tbody');
+          if (table) {
+            const rows = table.querySelectorAll('tr');
+            rows.forEach(row => {
+              const collectionId = row.getAttribute('data-collection-id');
+              if (!selectedCollectionId || selectedCollectionId === '') {
+                // Show all rows
+                row.style.display = '';
+              } else if (collectionId === selectedCollectionId) {
+                // Show rows matching the selected collection
+                row.style.display = '';
+              } else {
+                // Hide rows not matching the selected collection
+                row.style.display = 'none';
+              }
+            });
+            
+            // Uncheck any selected radio button if its row is now hidden
+            const visibleRows = Array.from(rows).filter(row => row.style.display !== 'none');
+            const checkedRadio = table.querySelector('input[type="radio"]:checked');
+            if (checkedRadio) {
+              const checkedRow = checkedRadio.closest('tr');
+              if (checkedRow && checkedRow.style.display === 'none') {
+                checkedRadio.checked = false;
+                const confirmBtn = document.getElementById('confirm-link-btn-' + gapType);
+                if (confirmBtn) {
+                  confirmBtn.disabled = true;
+                }
+              }
+            }
+          }
+        });
+      }
+
       // Handle token selection in link existing modal
       const table = document.querySelector('#link-existing-modal-' + gapType + ' .tokens-table tbody');
       if (table) {
@@ -1538,11 +1607,18 @@
         
         rows.forEach(row => {
           row.addEventListener('click', () => {
+            // Only allow selection if row is visible
+            if (row.style.display === 'none') return;
+            
             const radio = row.querySelector('input[type="radio"]');
             if (radio) {
               radio.checked = true;
               // Update selected row style
-              rows.forEach(r => r.style.backgroundColor = '');
+              rows.forEach(r => {
+                if (r.style.display !== 'none') {
+                  r.style.backgroundColor = '';
+                }
+              });
               row.style.backgroundColor = 'var(--color-surface)';
               
               // Enable button when token is selected
@@ -1736,7 +1812,7 @@
       if (existingCreateModal) existingCreateModal.remove();
       
       // Add new modals
-      const linkModal = createLinkExistingModal('itemSpacing', availableTokens, gapInfo.itemSpacing);
+      const linkModal = createLinkExistingModal('itemSpacing', availableTokens, gapInfo.itemSpacing, availableCollections);
       const createModal = createNewVariableModal('itemSpacing', availableCollections, gapInfo.itemSpacing);
       document.body.insertAdjacentHTML('beforeend', linkModal);
       document.body.insertAdjacentHTML('beforeend', createModal);
