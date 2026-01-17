@@ -1169,6 +1169,48 @@
     ::-webkit-scrollbar-thumb:hover {
       background: var(--color-text-tertiary);
     }
+
+    /* Viewport selector buttons */
+    .viewport-selector {
+      position: fixed;
+      bottom: var(--spacing-lg);
+      right: var(--spacing-lg);
+      display: flex;
+      gap: var(--spacing-xs);
+      z-index: 999;
+    }
+
+    .viewport-btn {
+      padding: var(--spacing-xs) var(--spacing-md);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      background: var(--color-surface-elevated);
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all var(--transition-base);
+      min-height: 32px;
+      min-width: 40px;
+    }
+
+    .viewport-btn:hover {
+      background: var(--color-surface);
+      border-color: var(--color-primary-border);
+      color: var(--color-primary);
+    }
+
+    .viewport-btn.active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: var(--color-primary-on-bg);
+    }
+
+    .viewport-btn:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>
@@ -1270,6 +1312,24 @@
           formattedValue = Number.isInteger(token.value) 
             ? `${token.value}px` 
             : `${token.value.toFixed(1)}px`;
+        }
+        
+        // Check if token value is linked to another token (alias)
+        // If it's an alias, show the referenced token info in the Value column
+        if (token.aliasInfo && token.aliasInfo.type === 'alias' && token.aliasInfo.variableName) {
+          const aliasTokenName = token.aliasInfo.variableName;
+          const aliasTokenValue = token.aliasInfo.variableValue !== null && token.aliasInfo.variableValue !== undefined 
+            ? (Number.isInteger(token.aliasInfo.variableValue) 
+                ? `${token.aliasInfo.variableValue}px` 
+                : `${token.aliasInfo.variableValue.toFixed(1)}px`)
+            : null;
+          
+          // Show token reference in the Value column (only if there's a value)
+          if (aliasTokenValue !== null) {
+            formattedValue = `${aliasTokenName} (${aliasTokenValue})`;
+          } else {
+            formattedValue = aliasTokenName;
+          }
         }
         
         const collectionIdAttr = token.collectionId ? `data-collection-id="${token.collectionId}"` : '';
@@ -1887,8 +1947,47 @@
         } else {
           showMessage(msg.data.message, 'error');
         }
+      } else if (msg.type === 'viewport-changed') {
+        // Update active button state
+        const buttons = document.querySelectorAll('.viewport-btn');
+        buttons.forEach(btn => {
+          btn.classList.remove('active');
+          if (btn.getAttribute('data-viewport') === msg.viewport) {
+            btn.classList.add('active');
+          }
+        });
       }
     };
+
+    // Handle viewport selector buttons
+    function setupViewportButtons() {
+      const viewportButtons = document.querySelectorAll('.viewport-btn');
+      viewportButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const viewport = btn.getAttribute('data-viewport');
+          parent.postMessage({
+            pluginMessage: {
+              type: 'change-viewport',
+              viewport: viewport
+            }
+          }, '*');
+        });
+      });
+    }
+
+    // Setup viewport buttons when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupViewportButtons);
+    } else {
+      setupViewportButtons();
+    }
   </script>
+
+  <!-- Viewport selector buttons -->
+  <div class="viewport-selector">
+    <button class="viewport-btn" data-viewport="S" title="Viewport S - 375px">S</button>
+    <button class="viewport-btn" data-viewport="M" title="Viewport M - 500px">M</button>
+    <button class="viewport-btn active" data-viewport="L" title="Viewport L - 750px">L</button>
+  </div>
 </body>
 </html>

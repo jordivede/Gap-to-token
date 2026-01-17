@@ -258,6 +258,7 @@ async function getAvailableTokens() {
       
       // Get value for active mode of the collection
       let value = null;
+      let aliasInfo = null;
       
       // Try to get value from active mode of collection
       if (v.variableCollectionId) {
@@ -273,23 +274,69 @@ async function getAvailableTokens() {
           
           // If we have an active mode, get the value for that mode
           if (activeModeId) {
+            
             // Try valuesByMode first (most reliable)
             if (v.valuesByMode && v.valuesByMode[activeModeId] !== undefined) {
               const modeValue = v.valuesByMode[activeModeId];
               if (typeof modeValue === 'number' && !isNaN(modeValue)) {
                 value = modeValue;
+              } else if (modeValue && typeof modeValue === 'object' && modeValue.type === 'VARIABLE_ALIAS') {
+                // Value is an alias to another variable
+                aliasInfo = {
+                  type: 'alias',
+                  variableId: modeValue.id,
+                  modeId: activeModeId
+                };
               }
             }
             
             // Fallback: try getValueForMode
-            if ((value === null || value === undefined) && v.getValueForMode) {
+            if ((value === null || value === undefined) && !aliasInfo && v.getValueForMode) {
               try {
                 const modeValue = v.getValueForMode(activeModeId);
                 if (typeof modeValue === 'number' && !isNaN(modeValue)) {
                   value = modeValue;
+                } else if (modeValue && typeof modeValue === 'object' && modeValue.type === 'VARIABLE_ALIAS') {
+                  // Value is an alias to another variable
+                  aliasInfo = {
+                    type: 'alias',
+                    variableId: modeValue.id,
+                    modeId: activeModeId
+                  };
                 }
               } catch (e) {
                 // getValueForMode failed
+              }
+            }
+            
+            // If we detected an alias, resolve the referenced variable
+            if (aliasInfo && aliasInfo.variableId) {
+              try {
+                const aliasVariable = await figma.variables.getVariableByIdAsync(aliasInfo.variableId);
+                if (aliasVariable) {
+                  // Get value from the referenced variable
+                  const referencedValue = getVariableValue(aliasVariable);
+                  
+                  // Get collection name for referenced variable
+                  let referencedCollectionName = null;
+                  if (aliasVariable.variableCollectionId) {
+                    const referencedCollection = collections.find(c => c.id === aliasVariable.variableCollectionId);
+                    if (referencedCollection) {
+                      referencedCollectionName = referencedCollection.name || null;
+                    }
+                  }
+                  
+                  aliasInfo.variableName = aliasVariable.name;
+                  aliasInfo.variableValue = typeof referencedValue === 'number' ? referencedValue : null;
+                  aliasInfo.variableCollectionName = referencedCollectionName;
+                  
+                  // Use the referenced variable's value for display
+                  value = typeof referencedValue === 'number' ? referencedValue : null;
+                }
+              } catch (e) {
+                // Failed to resolve alias variable
+                aliasInfo.variableName = null;
+                aliasInfo.error = 'No se pudo resolver la variable referenciada';
               }
             }
           }
@@ -318,7 +365,8 @@ async function getAvailableTokens() {
         name: v.name,
         value: numericValue,
         collectionId: v.variableCollectionId || null,
-        collectionName: collectionName
+        collectionName: collectionName,
+        aliasInfo: aliasInfo || null
       });
     }
     
@@ -714,6 +762,25 @@ if (figma.editorType === 'figma') {
         });
     } else if (msg.type === 'cancel') {
       figma.closePlugin();
+    } else if (msg.type === 'change-viewport') {
+      // Define viewport widths
+      const viewportWidths = {
+        'S': 375,
+        'M': 500,
+        'L': 750
+      };
+      
+      const width = viewportWidths[msg.viewport] || 750;
+      
+      // Resize UI to the selected viewport width
+      // Keep the same height
+      figma.ui.resize(width, 640);
+      
+      // Notify UI that viewport has changed
+      figma.ui.postMessage({ 
+        type: 'viewport-changed', 
+        viewport: msg.viewport 
+      });
     }
   };
 } else {
